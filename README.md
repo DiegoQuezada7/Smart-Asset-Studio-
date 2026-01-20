@@ -1,79 +1,83 @@
-# Smart Asset Studio v1.0 🚀
+# Smart Asset Studio
 
-Una suite de optimización de activos digitales de alto rendimiento, diseñada para vendedores de e-commerce, creadores y desarrolladores. Privada, local y potente.
+![Version](https://img.shields.io/badge/version-1.3.0-blue.svg) ![Electron](https://img.shields.io/badge/Electron-Desktop-orange.svg) ![AI Powered](https://img.shields.io/badge/AI-On--Device-green.svg)
 
-![Smart Asset Studio](https://via.placeholder.com/800x400?text=Smart+Asset+Studio+Preview)
+**Smart Asset Studio** es una aplicación de escritorio profesional para la automatización y diseño de activos digitales. Combina la potencia de la Inteligencia Artificial para el recorte de imágenes con un estudio de diseño completo estilo "Canva", todo ejecutándose localmente en tu ordenador.
 
-## ✨ Características Principales
+## 🚀 Características Principales
 
-### 🧠 Inteligencia Artificial Local
+### 🧠 Eliminación de Fondo con IA (Local)
 
-- **Eliminación de Fondo Premium**: Utiliza modelos de IA (`@imgly/background-removal`) ejecutados directamente en tu navegador. Tus fotos nunca tocan un servidor externo.
-- **Upscaling 2x Inteligente**: Aumenta la resolución de tus imágenes sin perder calidad usando redes neuronales (`UpscalerJS` + `Tensorflow.js`).
+- **Procesamiento 100% Offline:** Utiliza modelos de IA avanzados (`@imgly/background-removal`) directamente en tu dispositivo. Tus imágenes nunca salen de tu ordenador.
+- **Alta Precisión:** Detecta sujetos complejos como cabello y objetos finos automáticamente.
 
-### ⚡ Productividad "Batch" (Por Lotes)
+### 🎨 Editor de Máscaras (Mask Editor)
 
-- **Procesamiento Masivo**: Arrastra 50 fotos y procésalas todas de una vez.
-- **Renombrado SEO**: Asigna nombres optimizados a todo un lote (ej. `nike-air-01.webp`, `nike-air-02.webp`) con un solo clic.
-- **Exportación Flexible**: Descarga todo en un ZIP organizado.
+Perfecciona tus recortes con herramientas de precisión:
 
-### 🎨 Edición y Control
+- **Pinceles Mágicos:** Herramientas de **Borrar** y **Restaurar** con tamaño y dureza ajustables.
+- **Navegación Fluida:** Zoom inteligente y herramienta de "Mano" (Pan) para trabajar en detalles.
+- **Historial Completo:** Sistema robusto de **Deshacer/Rehacer (Undo/Redo)** con botones dedicados y atajos de teclado (`Ctrl+Z` / `Ctrl+Y`).
 
-- **Comparador Deslizante**: Revisa el "Antes y Después" con un slider interactivo en cada resultado.
-- **Pincel de Refinado**: ¿La IA se equivocó? Usa el editor manual para Borrar o Restaurar zonas específicas de la máscara.
-- **Formatos de Salida**: Elige entre **PNG** (calidad), **WEBP** (web moderna) o **JPEG** (compacto). Control total sobre la compresión.
+### 🖌️ Design Studio Pro
 
-### 🛡️ Privacidad y Seguridad
+Crea composiciones impactantes con herramientas de nivel profesional:
 
-- **100% Offline**: Funciona sin internet una vez cargada.
-- **Historial Persistente**: Si cierras la pestaña por error, tus trabajos siguen ahí gracias a `IndexedDB`.
-- **Datos Seguros**: Ninguna imagen sale de tu ordenador. Ideal para contenido confidencial.
+- **Manipulación de Imágenes en Tiempo Real:**
+  - **Filtros de Color:** Ajuste de Brillo y Contraste.
+  - **Efectos:** Opacidad y **Sombreado 3D (Drop Shadow)** configurable (desenfoque, distancia, color).
+  - **Drag & Drop:** Arrastra imágenes directamente desde tu escritorio al lienzo.
+- **Tipografía Avanzada:**
+  - Añade textos profesionales.
+  - Control total sobre Fuentes, Colores, Estilos (Negrita, Cursiva) y Alineación.
+- **Flujo de Trabajo Inteligente:**
+  - **Guías Magnéticas (Smart Snapping):** Alineación automática al centro del lienzo.
+  - **Gestión de Capas:** Reordena, bloquea, oculta o elimina elementos fácilmente.
+  - **Atajos Globales:** Mover con flechas, borrar con `Supr`, deshacer en cualquier momento.
+  - **Presets de Redes Sociales:** Instagram Post (1080x1080), Story (1080x1920) y Full HD.
 
-## 🛠️ Tecnologías
+## 🛠️ Tecnologías Utilizadas
 
-Construido con un stack moderno y eficiente:
+Este proyecto ha sido construido con las últimas tecnologías web y de escritorio:
 
-- **Framework**: Next.js 14 (App Router)
-- **UI**: React + Framer Motion (Animaciones fluidas)
-- **Estilos**: CSS Modules con diseño "Glassmorphism" oscuro.
-- **Motores IA**: WebAssembly (WASM) + WebGL.
+- **Core:** [Next.js 16](https://nextjs.org/) (React) + TypeScript.
+- **Desktop Engine:** [Electron](https://www.electronjs.org/).
+- **Gráficos:** [Fabric.js v6](http://fabricjs.com/) (Canvas API optimizada).
+- **AI:** `@imgly/background-removal`.
+- **UI/UX:** CSS Modules + Framer Motion (Animaciones) + Lucide (Iconos).
 
-## 🚀 Cómo Iniciar
+## 📦 Instalación y Desarrollo
 
-1. **Instalar dependencias**:
-
-   ```bash
-   npm install
-   ```
-
-2. **Arrancar el servidor de desarrollo**:
-
-   ```bash
-   npm run dev
-   ```
-
-3. **Abrir**: Visita `http://localhost:3000` en tu navegador.
-
-## 📦 Construcción para Producción
-
-### Opción A: Web Estática
-
-Para generar una versión web optimizada:
+### Ejecutar en Desarrollo
 
 ```bash
-npm run build
+# Instalar dependencias
+npm install
+
+# Iniciar entorno de desarrollo
+npm run dev
 ```
 
-### Opción B: App de Escritorio (.exe)
-
-Para generar el instalador de Windows:
+### Compilar para Producción (Windows .exe)
 
 ```bash
+# Generar instalador y ejecutable portable
 npm run dist
 ```
 
-El archivo de instalación aparecerá en la carpeta `dist/`.
+El instalador se generará en la carpeta `/dist`.
+
+## 🎮 Controles y Atajos
+
+| Acción                 | Atajo / Control                                    |
+| :--------------------- | :------------------------------------------------- |
+| **Deshacer**           | `Ctrl + Z`                                         |
+| **Rehacer**            | `Ctrl + Y`                                         |
+| **Borrar Objeto**      | `Supr` o `Backspace`                               |
+| **Mover Objeto**       | `Flechas del Teclado` (Shift para mayor velocidad) |
+| **Zoom (Mask Editor)** | Rueda del Ratón                                    |
+| **Pan (Mask Editor)**  | Espacio + Click y Arrastrar (o Herramienta Mano)   |
 
 ---
 
-_Desarrollado con ❤️ por Diego y Antigravity._
+_Desarrollado con ❤️ para profesionales del diseño._
