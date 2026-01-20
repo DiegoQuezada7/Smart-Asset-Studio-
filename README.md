@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Smart Asset Studio v1.0 🚀
 
-## Getting Started
+Una suite de optimización de activos digitales de alto rendimiento, diseñada para vendedores de e-commerce, creadores y desarrolladores. Privada, local y potente.
 
-First, run the development server:
+![Smart Asset Studio](https://via.placeholder.com/800x400?text=Smart+Asset+Studio+Preview)
+
+## ✨ Características Principales
+
+### 🧠 Inteligencia Artificial Local
+
+- **Eliminación de Fondo Premium**: Utiliza modelos de IA (`@imgly/background-removal`) ejecutados directamente en tu navegador. Tus fotos nunca tocan un servidor externo.
+- **Upscaling 2x Inteligente**: Aumenta la resolución de tus imágenes sin perder calidad usando redes neuronales (`UpscalerJS` + `Tensorflow.js`).
+
+### ⚡ Productividad "Batch" (Por Lotes)
+
+- **Procesamiento Masivo**: Arrastra 50 fotos y procésalas todas de una vez.
+- **Renombrado SEO**: Asigna nombres optimizados a todo un lote (ej. `nike-air-01.webp`, `nike-air-02.webp`) con un solo clic.
+- **Exportación Flexible**: Descarga todo en un ZIP organizado.
+
+### 🎨 Edición y Control
+
+- **Comparador Deslizante**: Revisa el "Antes y Después" con un slider interactivo en cada resultado.
+- **Pincel de Refinado**: ¿La IA se equivocó? Usa el editor manual para Borrar o Restaurar zonas específicas de la máscara.
+- **Formatos de Salida**: Elige entre **PNG** (calidad), **WEBP** (web moderna) o **JPEG** (compacto). Control total sobre la compresión.
+
+### 🛡️ Privacidad y Seguridad
+
+- **100% Offline**: Funciona sin internet una vez cargada.
+- **Historial Persistente**: Si cierras la pestaña por error, tus trabajos siguen ahí gracias a `IndexedDB`.
+- **Datos Seguros**: Ninguna imagen sale de tu ordenador. Ideal para contenido confidencial.
+
+## 🛠️ Tecnologías
+
+Construido con un stack moderno y eficiente:
+
+- **Framework**: Next.js 14 (App Router)
+- **UI**: React + Framer Motion (Animaciones fluidas)
+- **Estilos**: CSS Modules con diseño "Glassmorphism" oscuro.
+- **Motores IA**: WebAssembly (WASM) + WebGL.
+
+## 🚀 Cómo Iniciar
+
+1. **Instalar dependencias**:
+
+   ```bash
+   npm install
+   ```
+
+2. **Arrancar el servidor de desarrollo**:
+
+   ```bash
+   npm run dev
+   ```
+
+3. **Abrir**: Visita `http://localhost:3000` en tu navegador.
+
+## 📦 Construcción para Producción
+
+### Opción A: Web Estática
+
+Para generar una versión web optimizada:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Opción B: App de Escritorio (.exe)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Para generar el instalador de Windows:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dist
+```
 
-## Learn More
+El archivo de instalación aparecerá en la carpeta `dist/`.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+_Desarrollado con ❤️ por Diego y Antigravity._

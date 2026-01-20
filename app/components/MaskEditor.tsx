@@ -1,0 +1,434 @@
+"use client";
+
+import { useRef, useEffect, useState } from 'react';
+import { X, Check, Eraser, PenTool, ZoomIn, ZoomOut, Hand, RotateCcw, RotateCw, Stamp, Droplet } from 'lucide-react';
+import styles from './MaskEditor.module.css';
+
+interface MaskEditorProps {
+  originalUrl: string;
+  processedUrl: string;
+  initialProcessedUrl?: string; // The raw AI output for resetting
+  onSave: (newBlob: Blob) => void;
+  onCancel: () => void;
+}
+
+export default function MaskEditor({ originalUrl, processedUrl, initialProcessedUrl, onSave, onCancel }: MaskEditorProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  const [tool, setTool] = useState<'erase' | 'restore' | 'pan' | 'clone' | 'blur'>('erase');
+  const [prevTool, setPrevTool] = useState<'erase' | 'restore' | 'clone' | 'blur'>('erase'); 
+  const [brushSize, setBrushSize] = useState(20);
+  
+  // Clone Tool State
+  const [cloneSource, setCloneSource] = useState<{x:number, y:number} | null>(null);
+  const [cloneOffset, setCloneOffset] = useState<{x:number, y:number} | null>(null);
+
+  // Transform State
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // Images
+  const [imgOriginal, setImgOriginal] = useState<HTMLImageElement | null>(null);
+  const [imgProcessed, setImgProcessed] = useState<HTMLImageElement | null>(null);
+  const [imgInitial, setImgInitial] = useState<HTMLImageElement | null>(null);
+  
+  const [canvasSnapshot, setCanvasSnapshot] = useState<HTMLCanvasElement | null>(null);
+
+  // Undo/Redo State
+  const [history, setHistory] = useState<ImageData[]>([]);
+  const [historyStep, setHistoryStep] = useState(0);
+
+  const saveHistory = () => {
+    const canvas = canvasRef.current;
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if(!ctx) return;
+
+    try {
+        const currentState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // If we are in the middle of history, truncate future steps
+        const newHistory = history.slice(0, historyStep + 1);
+        newHistory.push(currentState);
+        
+        // Limit history size to 20 to prevent memory explosion
+        if (newHistory.length > 20) newHistory.shift();
+
+        setHistory(newHistory);
+        setHistoryStep(newHistory.length - 1);
+    } catch(e) {
+        console.error("History save failed", e);
+    }
+  };
+
+  const undo = () => {
+      if (historyStep > 0) {
+          const newStep = historyStep - 1;
+          const canvas = canvasRef.current;
+          const ctx = canvas?.getContext('2d');
+          if (canvas && ctx && history[newStep]) {
+              ctx.putImageData(history[newStep], 0, 0);
+              setHistoryStep(newStep);
+          }
+      }
+  };
+
+  const redo = () => {
+      if (historyStep < history.length - 1) {
+          const newStep = historyStep + 1;
+          const canvas = canvasRef.current;
+          const ctx = canvas?.getContext('2d');
+          if (canvas && ctx && history[newStep]) {
+              ctx.putImageData(history[newStep], 0, 0);
+              setHistoryStep(newStep);
+          }
+      }
+  };
+
+  useEffect(() => {
+    const img1 = new Image();
+    img1.src = originalUrl;
+    img1.crossOrigin = "anonymous";
+    
+    const img2 = new Image();
+    img2.src = processedUrl;
+    img2.crossOrigin = "anonymous";
+
+    const img3 = new Image();
+    if (initialProcessedUrl) {
+        img3.src = initialProcessedUrl;
+        img3.crossOrigin = "anonymous";
+    }
+
+    let loaded = 0;
+    const totalToLoad = initialProcessedUrl ? 3 : 2;
+
+    const onLoad = () => {
+      loaded++;
+      if (loaded === totalToLoad) {
+        setImgOriginal(img1);
+        setImgProcessed(img2);
+        if (initialProcessedUrl) setImgInitial(img3);
+        initCanvas(img1, img2);
+      }
+    };
+
+    img1.onload = onLoad;
+    img2.onload = onLoad;
+    if (initialProcessedUrl) img3.onload = onLoad;
+    
+  }, [originalUrl, processedUrl, initialProcessedUrl]); 
+
+  // Keyboard Shortcuts Effect
+  useEffect(() => {
+    // Global key listeners for shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Undo / Redo
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            e.preventDefault();
+            undo();
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+            e.preventDefault();
+            redo();
+            return;
+        }
+
+        // Tools
+        setTool(currentTool => {
+            if (e.code === 'Space' && currentTool !== 'pan') {
+                setPrevTool(currentTool as 'erase'|'restore'|'clone'|'blur');
+                return 'pan';
+            }
+            return currentTool;
+        });
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+        if (e.code === 'Space') {
+            setTool(latestTool => latestTool === 'pan' ? prevTool : latestTool);
+        }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [history, historyStep, prevTool]); // Separated dependencies
+ 
+
+  const initCanvas = (original: HTMLImageElement, processed: HTMLImageElement) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.width = original.width;
+    canvas.height = original.height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0,0, canvas.width, canvas.height);
+    ctx.drawImage(processed, 0, 0);
+
+    // Initial History Save
+    setTimeout(() => {
+        saveHistory(); 
+    }, 100);
+  };
+
+  const getPointerPos = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+      // Pan Logic
+      if (tool === 'pan' || (e.buttons === 4) || (e.button === 1)) { 
+          setIsDragging(true);
+          setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+          e.preventDefault();
+          return;
+      }
+
+      // Clone Source Set Logic (Ctrl + Click)
+      if (tool === 'clone' && (e.ctrlKey || e.metaKey)) {
+          const pos = getPointerPos(e);
+          setCloneSource(pos);
+          alert("Origen de clonado fijado.");
+          return;
+      }
+
+      // Drawing Logic
+      if (tool === 'clone' && !cloneSource) {
+          alert("Mantén presionado CTRL y haz clic para definir desde dónde copiar.");
+          return;
+      }
+
+      setIsDragging(true);
+      
+      // Clone Prep
+      if (tool === 'clone' && canvasRef.current) {
+          const snapshot = document.createElement('canvas');
+          snapshot.width = canvasRef.current.width;
+          snapshot.height = canvasRef.current.height;
+          snapshot.getContext('2d')?.drawImage(canvasRef.current, 0, 0);
+          setCanvasSnapshot(snapshot);
+          
+          const pos = getPointerPos(e);
+          setCloneOffset({
+              x: pos.x - cloneSource!.x,
+              y: pos.y - cloneSource!.y
+          });
+      }
+
+      draw(e); 
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+      if (!isDragging) return;
+
+      if (tool === 'pan' || (e.buttons === 4)) {
+          setPan({
+              x: e.clientX - dragStart.x,
+              y: e.clientY - dragStart.y
+          });
+      } else {
+          draw(e);
+      }
+  };
+
+  const handleMouseUp = () => {
+      if (isDragging) {
+          saveHistory(); // Save state after stroke
+      }
+      setIsDragging(false);
+      setCanvasSnapshot(null);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!canvasRef.current || (tool === 'restore' && !imgOriginal)) return;
+    
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    const { x, y } = getPointerPos(e);
+    
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (tool === 'erase') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.moveTo(x, y); 
+      ctx.lineTo(x, y); 
+      ctx.stroke();
+    } else if (tool === 'restore') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(imgOriginal!, 0, 0);
+      ctx.restore();
+    } else if (tool === 'clone' && canvasSnapshot && cloneOffset) {
+       const sourceX = x - cloneOffset.x;
+       const sourceY = y - cloneOffset.y;
+       
+       ctx.globalCompositeOperation = 'source-over';
+       ctx.save();
+       ctx.beginPath();
+       ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+       ctx.clip();
+       
+       ctx.drawImage(
+           canvasSnapshot,
+           sourceX - brushSize / 2, 
+           sourceY - brushSize / 2, 
+           brushSize,               
+           brushSize,               
+           x - brushSize / 2,       
+           y - brushSize / 2,       
+           brushSize,               
+           brushSize                
+       );
+       
+       ctx.restore();
+    } else if (tool === 'blur') {
+       ctx.globalCompositeOperation = 'source-over';
+       ctx.save();
+       ctx.beginPath();
+       ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+       ctx.clip();
+       
+       // Blur Magic
+       // @ts-ignore
+       ctx.filter = 'blur(4px)';
+       ctx.drawImage(canvasRef.current, 0, 0);
+       // @ts-ignore
+       ctx.filter = 'none'; // Reset filter
+       
+       ctx.restore();
+    }
+  };
+
+  const handleSave = () => {
+    canvasRef.current?.toBlob((blob) => {
+      if (blob) onSave(blob);
+    }, 'image/png');
+  };
+  
+  const handleReset = () => {
+      const targetImg = imgInitial || imgProcessed;
+      if (imgOriginal && targetImg) {
+          initCanvas(imgOriginal, targetImg);
+      }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setScale(s => Math.max(0.1, Math.min(10, s * delta)));
+  };
+
+  return (
+    <div className={styles.overlay} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+      <div className={styles.toolbar}>
+         <div className={styles.tools}>
+            <button className={`${styles.toolBtn} ${tool === 'erase' ? styles.active : ''}`} onClick={() => setTool('erase')}>
+               <Eraser size={18} /> Borrar
+            </button>
+            <button className={`${styles.toolBtn} ${tool === 'restore' ? styles.active : ''}`} onClick={() => setTool('restore')}>
+               <PenTool size={18} /> Restaurar
+            </button>
+            <button className={`${styles.toolBtn} ${tool === 'clone' ? styles.active : ''}`} onClick={() => setTool('clone')} title="Ctrl+Click para fijar origen">
+               <Stamp size={18} /> Tampón
+            </button>
+            <button className={`${styles.toolBtn} ${tool === 'blur' ? styles.active : ''}`} onClick={() => setTool('blur')} title="Suavizar / Difuminar">
+               <Droplet size={18} /> Suavizar
+            </button>
+            <div className={styles.divider}></div>
+             <button 
+                 className={`${styles.toolBtn} ${historyStep <= 0 ? styles.disabled : ''}`} 
+                 onClick={undo}
+                 title="Deshacer (Ctrl+Z)"
+              >
+                 <RotateCcw size={18} />
+              </button>
+              <button 
+                 className={`${styles.toolBtn} ${historyStep >= history.length - 1 ? styles.disabled : ''}`} 
+                 onClick={redo}
+                 title="Rehacer (Ctrl+Y)"
+              >
+                 <RotateCw size={18} />
+              </button>
+            <div className={styles.divider}></div>
+            
+            <button className={`${styles.toolBtn} ${tool === 'pan' ? styles.active : ''}`} onClick={() => setTool('pan')} title="Mover (Espacio)">
+               <Hand size={18} /> Mover
+            </button>
+            <div className={styles.divider}></div>
+            <button className={styles.toolBtn} onClick={handleReset} title="Reiniciar a Original">
+               <RotateCcw size={18} /> Reiniciar
+            </button>
+            
+            <div className={styles.brushSize}>
+               Tamaño: {brushSize}px
+               <input type="range" min="5" max="100" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className={styles.slider} />
+            </div>
+         </div>
+
+         <div className={styles.actions}>
+            <button className={styles.toolBtn} onClick={onCancel}>
+               <X size={18} /> Cancelar
+            </button>
+            <button className={`${styles.toolBtn} ${styles.active}`} onClick={handleSave}>
+               <Check size={18} /> Guardar
+            </button>
+         </div>
+      </div>
+
+      <div className={styles.canvasContainer} onWheel={handleWheel} style={{overflow:'hidden', cursor: tool === 'pan' ? 'grab' : (tool === 'clone' || tool === 'blur') ? 'crosshair' : 'crosshair'}}>
+          <canvas 
+            ref={canvasRef}
+            className={styles.canvas}
+            onMouseDown={handleMouseDown}
+            onTouchStart={(e) => { setIsDragging(true); draw(e); }}
+            onTouchMove={draw}
+            onTouchEnd={() => setIsDragging(false)}
+            
+            style={{ 
+               transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`, 
+               transformOrigin: 'center',
+            }}
+          />
+          
+          <div className={styles.zoomControls}>
+             <button onClick={() => setScale(s => Math.max(0.1, s - 0.2))} style={{background: 'transparent', border:'none', color:'white'}}><ZoomOut size={20}/></button>
+             <span style={{color:'white', fontSize:'12px'}}>{Math.round(scale * 100)}%</span>
+             <button onClick={() => setScale(s => Math.min(10, s + 0.2))} style={{background: 'transparent', border:'none', color:'white'}}><ZoomIn size={20}/></button>
+             <button onClick={() => { setScale(1); setPan({x:0, y:0}); }} style={{background: 'transparent', border:'none', color:'#aaa', fontSize:10, marginLeft:5}}>RESET VISTA</button>
+          </div>
+
+          <div style={{position:'absolute', bottom: 20, left: '50%', transform:'translateX(-50%)', color:'rgba(255,255,255,0.5)', fontSize:12, pointerEvents:'none'}}>
+             Espacio + Arrastrar para mover | Tampón: Ctrl+Clic
+          </div>
+      </div>
+    </div>
+  );
+}
