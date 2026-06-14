@@ -1,9 +1,9 @@
 "use client";
 
 import { useDropzone } from "react-dropzone";
-import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette, Settings, Layers } from "lucide-react";
-import { useCallback, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette, Settings, Layers, Grid3X3, List, ArrowUpDown, ZoomIn, Maximize2 } from "lucide-react";
+import { useCallback, useState, useMemo, useEffect } from "react";
+import { motion, AnimatePresence, Reorder } from "framer-motion";
 import styles from "./page.module.css";
 import { useImageProcessor } from "./hooks/useImageProcessor";
 import { downloadAsZip } from "./utils/downloader";
@@ -11,6 +11,14 @@ import CompareSlider from "./components/CompareSlider";
 import MaskEditor from "./components/MaskEditor";
 import DesignStudio from "./components/studio/DesignStudio";
 import { useLocalStorage } from "./hooks/useLocalStorage";
+import { useKeyboard } from "./hooks/useKeyboard";
+import { useToast } from "./contexts/ToastContext";
+import EmptyState from "./components/EmptyState";
+import CommandPalette from "./components/CommandPalette";
+import KeyboardShortcuts from "./components/KeyboardShortcuts";
+import ImageLightbox from "./components/ImageLightbox";
+import ExportPreview from "./components/ExportPreview";
+import ContextMenu from "./components/ContextMenu";
 
 interface FileWithPreview extends File {
   preview: string;
@@ -35,7 +43,7 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
         exit={{ opacity: 0, scale: 0.95, y: 8 }}
         transition={{ duration: 0.15 }}
         style={{
-          background: '#18181b', border: '1px solid #3f3f46', borderRadius: 16,
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-active)', borderRadius: 16,
           padding: '2rem', maxWidth: 400, width: '90%', display: 'flex', flexDirection: 'column', gap: '1.5rem',
         }}
         onClick={(e) => e.stopPropagation()}
@@ -43,17 +51,17 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
         aria-modal="true"
         aria-label="Confirmación"
       >
-        <p style={{ color: '#fff', fontSize: '0.95rem', lineHeight: 1.6 }}>{message}</p>
+        <p style={{ color: 'var(--text-main)', fontSize: '0.95rem', lineHeight: 1.6 }}>{message}</p>
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <button
             onClick={onCancel}
-            style={{ background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem' }}
+            style={{ background: 'transparent', border: '1px solid var(--border-active)', color: 'var(--text-muted)', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem' }}
           >
             Cancelar
           </button>
           <button
             onClick={onConfirm}
-            style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#ef4444', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600 }}
+            style={{ background: 'var(--danger-dim)', border: '1px solid var(--danger)', color: 'var(--danger)', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600 }}
           >
             Confirmar
           </button>
@@ -65,26 +73,56 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
 
 export default function Home() {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
-  const { results, isProcessing, processImages, processBatch, clearHistory, updateResultBlob, deleteAsset, renameFile, renameBatch } = useImageProcessor();
+  const { results, isProcessing, currentProcessingId, processImages, processBatch, cancelProcessing, retryAsset, clearHistory, updateResultBlob, deleteAsset, deleteMultiple, renameFile, renameBatch } = useImageProcessor();
   const [viewMode, setViewMode] = useState<'upload' | 'results' | 'settings' | 'studio'>('upload');
   const [showSeoMenu, setShowSeoMenu] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Gallery state
+  const [galleryView, setGalleryView] = useLocalStorage<'grid' | 'list'>('gallery_view', 'grid');
+  const [zoomLevel, setZoomLevel] = useLocalStorage('gallery_zoom', 50);
+  const [sortMode, setSortMode] = useLocalStorage<'name' | 'date' | 'size'>('gallery_sort', 'date');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Modal state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Settings State (Persistent)
   const [seoPrefix, setSeoPrefix] = useLocalStorage('seo_prefix', '');
   const [exportFormat, setExportFormat] = useLocalStorage<'png' | 'webp' | 'jpeg'>('export_format', 'png');
   const [quality, setQuality] = useLocalStorage('export_quality', 90);
   const [shouldUpscale, setShouldUpscale] = useLocalStorage('upscale_enabled', false);
+  const [bgColor, setBgColor] = useLocalStorage('bg_color', '');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Context menu
+  const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  // Batch resize
+  const [resizeEnabled, setResizeEnabled] = useLocalStorage('resize_enabled', false);
+  const [resizeWidth, setResizeWidth] = useLocalStorage('resize_width', 1000);
+  const [resizeHeight, setResizeHeight] = useLocalStorage('resize_height', 1000);
+
+  // Export presets
+  const [presets, setPresets] = useLocalStorage<{ name: string; format: string; quality: number; bgColor: string; upscale: boolean }[]>('export_presets', []);
+  const [showPresetInput, setShowPresetInput] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const toast = useToast();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) =>
       Object.assign(file, {
-        preview: URL.createObjectURL(file), // Create a local preview URL
+        preview: URL.createObjectURL(file),
       })
     );
     setFiles((prev) => [...prev, ...newFiles]);
-  }, []);
+    if (viewMode === 'results') setViewMode('upload');
+  }, [viewMode]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -97,16 +135,77 @@ export default function Home() {
 
   const handleProcess = async () => {
     if (files.length === 0) return;
-    processBatch(files); // Fire and forget (updates via state)
+    processBatch(files, shouldUpscale);
     setViewMode('results');
   };
 
+  const handleCancel = () => {
+    cancelProcessing();
+    toast.addToast('info', 'Procesamiento cancelado');
+  };
+
+  const completedResults = useMemo(() =>
+    Object.values(results).filter(r => r.status === 'completed'),
+  [results]);
+
   const handleExport = async () => {
-     const completedResults = Object.values(results).filter(r => r.status === 'completed');
-     if (completedResults.length > 0) {
-        // Pass settings to downloader
-        await downloadAsZip(completedResults, exportFormat, quality / 100);
-     }
+    if (completedResults.length > 0) {
+      setExportPreviewOpen(true);
+    }
+  };
+
+  const doExport = async (selectedIds: string[]) => {
+    const toExport = completedResults.filter(r => selectedIds.includes(r.id));
+    if (toExport.length > 0) {
+      await downloadAsZip(toExport, exportFormat, quality / 100, bgColor, resizeEnabled ? resizeWidth : undefined, resizeEnabled ? resizeHeight : undefined);
+      toast.addToast('success', `Exportación completada — ${toExport.length} archivo${toExport.length !== 1 ? 's' : ''}`);
+    }
+    setExportPreviewOpen(false);
+  };
+
+  const downloadIndividual = async (id: string) => {
+    const asset = results[id];
+    if (!asset || asset.status !== 'completed') return;
+    await downloadAsZip([asset], exportFormat, quality / 100, bgColor, resizeEnabled ? resizeWidth : undefined, resizeEnabled ? resizeHeight : undefined);
+    toast.addToast('success', `${asset.fileName} descargado`);
+  };
+
+  const handleRetry = async (id: string) => {
+    await retryAsset(id, shouldUpscale);
+  };
+
+  const handleDeleteBatch = () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    deleteMultiple(Array.from(selectedIds));
+    setSelectedIds(new Set());
+    toast.addToast('info', `${count} imagen${count !== 1 ? 'es' : ''} eliminada${count !== 1 ? 's' : ''}`);
+  };
+
+  const handleDeleteAsset = (id: string) => {
+    const name = results[id]?.fileName || 'Imagen';
+    deleteAsset(id);
+    toast.addToast('info', `${name} eliminada`);
+  };
+
+  const handleReprocessBatch = async () => {
+    const toReprocess = completedResults.filter(r => selectedIds.size === 0 || selectedIds.has(r.id));
+    if (toReprocess.length === 0) return;
+    const files = await Promise.all(
+      toReprocess.map(async (r) => {
+        const res = await fetch(r.originalUrl);
+        const blob = await res.blob();
+        return new File([blob], r.fileName, { type: blob.type });
+      })
+    );
+    // Clear selected items to reprocess
+    const idsToRemove = new Set(toReprocess.map(r => r.id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      idsToRemove.forEach(id => next.delete(id));
+      return next;
+    });
+    processBatch(files, shouldUpscale);
   };
 
   const hasResults = Object.keys(results).length > 0;
@@ -114,6 +213,107 @@ export default function Home() {
   const completedCount = Object.values(results).filter(r => r.status === 'completed').length;
   const totalCount = Object.keys(results).length;
   const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const sortedResults = useMemo(() => {
+    let entries = Object.entries(results);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      entries = entries.filter(([, r]) => r.fileName.toLowerCase().includes(q));
+    }
+    switch (sortMode) {
+      case 'name':
+        return [...entries].sort(([, a], [, b]) => a.fileName.localeCompare(b.fileName));
+      default:
+        return entries;
+    }
+  }, [results, sortMode, searchQuery]);
+
+  const lightboxImages = useMemo(() =>
+    completedResults.map(r => ({ id: r.id, url: r.processedUrl, label: r.fileName })),
+  [completedResults]);
+
+  const exportItems = useMemo(() =>
+    completedResults.map(r => ({
+      id: r.id,
+      fileName: r.fileName,
+      url: r.processedUrl,
+      size: r.originalSize || 0,
+    })),
+  [completedResults]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === sortedResults.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sortedResults.map(([id]) => id)));
+    }
+  };
+
+  // Confirm before close if processing
+  useEffect(() => {
+    if (!isProcessing) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isProcessing]);
+
+  // Toast when processing completes
+  useEffect(() => {
+    if (!isProcessing && totalCount > 0 && completedCount === totalCount) {
+      const errored = Object.values(results).filter(r => r.status === 'error').length;
+      if (errored > 0) {
+        toast.addToast('warning', `Procesamiento completado con ${errored} error${errored !== 1 ? 'es' : ''}`);
+      } else {
+        toast.addToast('success', `${totalCount} imagen${totalCount !== 1 ? 'es' : ''} procesada${totalCount !== 1 ? 's' : ''}`);
+      }
+    }
+  }, [isProcessing]);
+
+  // Keyboard shortcuts
+  const isStudioActive = viewMode === 'studio';
+
+  useKeyboard([
+    { key: '1', handler: () => setViewMode('upload'), enabled: !isStudioActive },
+    { key: '2', handler: () => hasResults && setViewMode('results'), enabled: !isStudioActive },
+    { key: '3', handler: () => setViewMode('studio'), enabled: !isStudioActive },
+    { key: '4', handler: () => setViewMode('settings'), enabled: !isStudioActive },
+    { key: 'e', handler: handleExport, enabled: !isStudioActive },
+    { key: '?', handler: () => setShortcutsOpen(true) },
+    { key: 'k', ctrl: true, handler: () => setCommandPaletteOpen(true) },
+    { key: 'k', meta: true, handler: () => setCommandPaletteOpen(true) },
+    { key: 'Delete', handler: () => {
+      if (selectedIds.size > 0) handleDeleteBatch();
+    }, enabled: !isStudioActive },
+    { key: 'Backspace', handler: () => {
+      if (selectedIds.size > 0) handleDeleteBatch();
+    }, enabled: !isStudioActive },
+  ]);
+
+  const paletteCommands = useMemo(() => [
+    { id: 'upload', label: 'Ir a Mesa de Trabajo', shortcut: '1', icon: <Upload size={16} />, action: () => setViewMode('upload') },
+    { id: 'results', label: 'Ir a Resultados', shortcut: '2', icon: <ImageIcon size={16} />, action: () => hasResults && setViewMode('results'), enabled: hasResults },
+    { id: 'studio', label: 'Ir a Design Studio', shortcut: '3', icon: <Palette size={16} />, action: () => setViewMode('studio') },
+    { id: 'settings', label: 'Ir a Ajustes', shortcut: '4', icon: <Settings size={16} />, action: () => setViewMode('settings') },
+    { id: 'export', label: 'Exportar Todo', shortcut: 'E', icon: <Download size={16} />, action: handleExport, enabled: completedResults.length > 0 },
+    { id: 'process', label: 'Procesar Archivos', shortcut: '', icon: <Sparkles size={16} />, action: handleProcess, enabled: files.length > 0 && !isProcessing },
+    { id: 'shortcuts', label: 'Ver Atajos de Teclado', shortcut: '?', icon: <Maximize2 size={16} />, action: () => setShortcutsOpen(true) },
+  ], [viewMode, hasResults, completedResults, handleExport, handleProcess, files, isProcessing]);
+
+  const gridCols = useMemo(() => {
+    const min = 160 + (zoomLevel / 100) * 200;
+    return `repeat(auto-fill, minmax(${min}px, 1fr))`;
+  }, [zoomLevel]);
 
   return (
     <div className={styles.container}>
@@ -154,7 +354,44 @@ export default function Home() {
           </button>
         </nav>
 
-        {/* Studio Panel (Only visible when active, but kept simple here) */}
+        {/* Bottom hint */}
+        <div style={{
+          marginTop: 'auto',
+          padding: '0.5rem 1rem',
+          fontSize: '0.7rem',
+          color: 'var(--text-dim)',
+          textAlign: 'center',
+        }}>
+          <button
+            onClick={() => setShortcutsOpen(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: '0.7rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              justifyContent: 'center',
+              width: '100%',
+              padding: '4px 0',
+              transition: 'color 0.2s',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-dim)'}
+          >
+            <span style={{
+              padding: '1px 5px',
+              background: 'var(--bg-card)',
+              borderRadius: 3,
+              border: '1px solid var(--border-subtle)',
+              fontSize: 9,
+            }}>?</span>
+            {' '}Atajos
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -184,36 +421,47 @@ export default function Home() {
                     className={styles.actions}
                   >
                    <div className={styles.upscaleToggleWrapper}>
-                       <label className={styles.toggleSwitch} htmlFor="upscale-toggle">
-                          <input
-                            id="upscale-toggle"
-                            type="checkbox"
-                            checked={shouldUpscale}
-                            onChange={(e) => setShouldUpscale(e.target.checked)}
-                            aria-label="Activar Upscale IA 2x"
-                          />
-                          <span className={styles.slider}></span>
-                       </label>
-                       <label htmlFor="upscale-toggle" className={styles.toggleLabel}>Upscale IA 2x (Lento)</label>
+                        <label className={styles.toggleSwitch} htmlFor="upscale-toggle">
+                           <input
+                             id="upscale-toggle"
+                             type="checkbox"
+                             checked={shouldUpscale}
+                             onChange={(e) => setShouldUpscale(e.target.checked)}
+                             aria-label="Activar Upscale IA 2x"
+                           />
+                           <span className={styles.slider}></span>
+                        </label>
+                        <label htmlFor="upscale-toggle" className={styles.toggleLabel}>Upscale IA 2x</label>
                   </div>
                     <div className={styles.divider}></div>
                     <div className={styles.stats}>
                       {isProcessing
-                        ? <span>{completedCount}/{totalCount} procesados</span>
+                        ? <span>{completedCount}/{totalCount} · {results[currentProcessingId || '']?.fileName || '…'}</span>
                         : <span>{files.length} Archivos</span>
                       }
                     </div>
-                    <button
-                      className="btn-primary"
-                      onClick={handleProcess}
-                      disabled={isProcessing || files.length === 0}
-                    >
-                      {isProcessing ? (
-                        <span className={styles.btnContent}><Loader2 className={styles.spin} size={18}/> Procesando...</span>
-                      ) : (
-                        <span className={styles.btnContent}><Sparkles size={18}/> Procesar Todo</span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        className="btn-primary"
+                        onClick={handleProcess}
+                        disabled={isProcessing || files.length === 0}
+                      >
+                        {isProcessing ? (
+                          <span className={styles.btnContent}><Loader2 className={styles.spin} size={18}/> {completedCount}/{totalCount}</span>
+                        ) : (
+                          <span className={styles.btnContent}><Sparkles size={18}/> Procesar Todo</span>
+                        )}
+                      </button>
+                      {isProcessing && (
+                        <button
+                          className={styles.secondaryBtn}
+                          onClick={handleCancel}
+                          style={{ height: 36, borderColor: 'var(--danger)', color: 'var(--danger)' }}
+                        >
+                          <X size={16} /> Cancelar
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </motion.div>
                 )}
                 
@@ -223,6 +471,126 @@ export default function Home() {
                     animate={{ opacity: 1 }}
                     className={styles.actions}
                   >
+                    {/* Gallery controls */}
+                    <div className={styles.galleryControls}>
+                      <button
+                        className={`${styles.iconBtn} ${galleryView === 'grid' ? styles.activeIconBtn : ''}`}
+                        onClick={() => setGalleryView('grid')}
+                        title="Vista cuadrícula"
+                      >
+                        <Grid3X3 size={16} />
+                      </button>
+                      <button
+                        className={`${styles.iconBtn} ${galleryView === 'list' ? styles.activeIconBtn : ''}`}
+                        onClick={() => setGalleryView('list')}
+                        title="Vista lista"
+                      >
+                        <List size={16} />
+                      </button>
+
+                      <div className={styles.divider}></div>
+
+                      {/* Zoom slider */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <ZoomIn size={14} style={{ color: 'var(--text-dim)' }} />
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={zoomLevel}
+                          onChange={(e) => setZoomLevel(Number(e.target.value))}
+                          style={{
+                            width: 60,
+                            accentColor: 'var(--primary)',
+                            cursor: 'pointer',
+                          }}
+                          aria-label="Zoom de galería"
+                        />
+                      </div>
+
+                      <div className={styles.divider}></div>
+
+                      {/* Sort */}
+                      <div style={{ position: 'relative' }}>
+                        <select
+                          value={sortMode}
+                          onChange={(e) => setSortMode(e.target.value as any)}
+                          style={{
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border-subtle)',
+                            color: 'var(--text-muted)',
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            outline: 'none',
+                          }}
+                          aria-label="Ordenar por"
+                        >
+                          <option value="date">Más recientes</option>
+                          <option value="name">Nombre A-Z</option>
+                        </select>
+                      </div>
+
+                      <div className={styles.divider}></div>
+
+                      {/* Search */}
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          placeholder="Buscar…"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          style={{
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border-subtle)',
+                            color: 'var(--text-main)',
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            fontSize: '0.8rem',
+                            width: 120,
+                            outline: 'none',
+                            fontFamily: 'inherit',
+                          }}
+                          aria-label="Buscar por nombre"
+                        />
+                        {searchQuery && (
+                          <button
+                            onClick={() => setSearchQuery('')}
+                            style={{
+                              position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                              background: 'transparent', border: 'none', color: 'var(--text-dim)',
+                              cursor: 'pointer', padding: 2, display: 'flex',
+                            }}
+                            aria-label="Limpiar búsqueda"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className={styles.divider}></div>
+
+                      {/* Select all */}
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: '0.8rem',
+                        color: 'var(--text-dim)',
+                        cursor: 'pointer',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.size === sortedResults.length && sortedResults.length > 0}
+                          onChange={selectAll}
+                          style={{ accentColor: 'var(--primary)' }}
+                        />
+                        Todo
+                      </label>
+                    </div>
+
                     {showSeoMenu ? (
                         <motion.div 
                             initial={{ opacity: 0, scale: 0.95 }}
@@ -251,16 +619,42 @@ export default function Home() {
                             </button>
                         </motion.div>
                     ) : (
-                        <button className={styles.secondaryBtn} onClick={() => setShowSeoMenu(true)}>
-                            <Pencil size={16} /> SEO Lote
+                        <button className={styles.secondaryBtn} onClick={() => setShowSeoMenu(true)} style={{ height: 32, fontSize: '0.8rem' }}>
+                            <Pencil size={14} /> SEO Lote
                         </button>
                     )}
 
                     <div className={styles.divider}></div>
 
-                    <button className="btn-primary" onClick={handleExport}>
+                    {/* Reprocess */}
+                    <button
+                      className={styles.secondaryBtn}
+                      onClick={handleReprocessBatch}
+                      style={{ height: 32, fontSize: '0.8rem' }}
+                      disabled={isProcessing}
+                    >
+                      <Loader2 size={14} /> Reprocesar
+                    </button>
+
+                    <div className={styles.divider}></div>
+
+                    {/* Batch delete */}
+                    {selectedIds.size > 0 && (
+                      <>
+                        <button
+                          className={styles.secondaryBtn}
+                          onClick={handleDeleteBatch}
+                          style={{ height: 32, fontSize: '0.8rem', borderColor: 'var(--danger)', color: 'var(--danger)' }}
+                        >
+                          <Trash2 size={14} /> ({selectedIds.size})
+                        </button>
+                        <div className={styles.divider}></div>
+                      </>
+                    )}
+
+                    <button className="btn-primary" onClick={handleExport} style={{ height: 32, fontSize: '0.8rem', padding: '0 1rem' }}>
                         <div className={styles.btnContent}>
-                            <Download size={18} /> Exportar Todo
+                            <Download size={14} /> Exportar
                         </div>
                     </button>
                   </motion.div>
@@ -286,7 +680,7 @@ export default function Home() {
               {/* STUDIO VIEW — always mounted to preserve Fabric.js canvas state */}
               <div style={{display: viewMode === 'studio' ? 'block' : 'none', height: '100%'}}>
                   <DesignStudio
-                      assets={Object.values(results).filter(r => r.status === 'completed')}
+                      assets={completedResults}
                       exportFormat={exportFormat}
                       quality={quality / 100}
                       onDeleteAsset={deleteAsset}
@@ -306,19 +700,25 @@ export default function Home() {
                   transition={{ duration: 0.18 }}
                   style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
                 >
-                  {files.length > 0 && (
-                    <div className={styles.gallery}>
-                      <AnimatePresence>
+                  {files.length > 0 ? (
+                    <div className={styles.gallery} style={{ gridTemplateColumns: gridCols }}>
+                      <Reorder.Group
+                        axis="y"
+                        values={files}
+                        onReorder={setFiles}
+                        as="div"
+                        style={{ display: 'contents' }}
+                      >
                         {files.map((file) => {
                           const status = results[file.name]?.status;
                           return (
-                            <motion.div
-                              layout
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.1 } }}
+                            <Reorder.Item
+                              value={file}
                               key={file.name}
+                              as="div"
                               className={styles.card}
+                              style={{ listStyle: 'none', cursor: 'grab' }}
+                              whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
                             >
                               <div className={styles.cardImageWrapper}>
                                   <img
@@ -336,7 +736,6 @@ export default function Home() {
                                     </button>
                                   )}
 
-                                  {/* Status Overlay */}
                                   {status === 'completed' && (
                                     <div className={styles.statusOverlaySuccess} aria-label="Completado" role="status">
                                       <Sparkles size={16} aria-hidden="true" />
@@ -347,34 +746,28 @@ export default function Home() {
                                 <p className={styles.cardTitle}>{file.name}</p>
                                 <p className={styles.cardSize}>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                               </div>
-                            </motion.div>
+                            </Reorder.Item>
                           );
                         })}
+                      </Reorder.Group>
 
-                        <div
-                            className={`${styles.card} ${styles.miniDrop}`}
-                            {...getRootProps()}
-                        >
-                            <input {...getInputProps()} />
-                            <Upload size={24} className={styles.miniDropIcon} />
-                            <span>Añadir Más</span>
-                        </div>
-                      </AnimatePresence>
-                    </div>
-                  )}
-
-                  {files.length === 0 && (
-                    <div className={styles.emptyStateWrapper}>
                       <div
-                        {...getRootProps()}
-                        className={`${styles.dropZone} ${isDragActive ? styles.active : ""}`}
+                          className={`${styles.card} ${styles.miniDrop}`}
+                          {...getRootProps()}
                       >
-                        <input {...getInputProps()} />
-                        <div className={styles.dropIcon}>
-                          {isDragActive ? <Upload size={48} /> : <ImageIcon size={48} />}
-                        </div>
-                        <h3>{isDragActive ? "Suelta los archivos aquí" : "Arrastra y suelta imágenes aquí"}</h3>
-                        <p>o haz clic para buscar</p>
+                          <input {...getInputProps()} />
+                          <Upload size={24} />
+                          <span>Añadir Más</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.emptyStateWrapper} {...getRootProps()}>
+                      <input {...getInputProps()} />
+                      <div style={{ pointerEvents: 'none' }}>
+                        <EmptyState
+                          view="upload"
+                          onAction={() => document.querySelector<HTMLInputElement>('input[type="file"]')?.click()}
+                        />
                       </div>
                     </div>
                   )}
@@ -390,49 +783,227 @@ export default function Home() {
                   exit={{ opacity: 0, y: -4 }}
                   transition={{ duration: 0.18 }}
                 >
-                  <div className={styles.gallery}>
-                    {Object.entries(results).map(([id, res]) => (
-                        <div key={id} className={styles.card}>
-                          <div className={styles.compareContainer}>
-                              {res.status === 'completed' ? (
-                                <div className={styles.resultImageWrapper}>
-                                  <div className={styles.checkerboard}></div>
-                                  <div className={styles.compareSliderOverlay}>
-                                      <CompareSlider before={res.originalUrl} after={res.processedUrl} />
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className={styles.loadingWrapper}>
-                                  <Loader2 className={styles.spin} />
-                                </div>
-                              )}
+                  {sortedResults.length > 0 ? (
+                    <div
+                      className={galleryView === 'grid' ? styles.gallery : styles.listView}
+                      style={galleryView === 'grid' ? { gridTemplateColumns: gridCols } : undefined}
+                    >
+                      {sortedResults.map(([id, res]) => (
+                        <div key={id} className={galleryView === 'grid' ? styles.card : styles.listCard}>
+                          {/* Checkbox (always visible) */}
+                          <div
+                            style={{
+                              position: galleryView === 'grid' ? 'absolute' : 'relative',
+                              top: galleryView === 'grid' ? 8 : undefined,
+                              left: galleryView === 'grid' ? 8 : undefined,
+                              zIndex: 20,
+                              padding: galleryView === 'list' ? '0 8px 0 0' : undefined,
+                              display: galleryView === 'grid' ? undefined : 'flex',
+                              alignItems: 'center',
+                            }}
+                            className={galleryView === 'grid' ? styles.cardCheckbox : ''}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(id)}
+                              onChange={() => toggleSelect(id)}
+                              style={{ accentColor: 'var(--primary)', cursor: 'pointer' }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
                           </div>
-                          <div className={styles.cardInfo}>
-                              <div className={styles.inputGroup}>
-                                <input
-                                    className={styles.fileNameInput}
-                                    value={res.fileName}
-                                    onChange={(e) => renameFile(res.id, e.target.value)}
-                                    aria-label="Nombre de archivo"
-                                />
-                                <Pencil size={12} className={styles.editIcon} aria-hidden="true" />
-                              </div>
-                              <div className={styles.cardInfoRow}>
-                                <span className={styles.tag}>Fondo Eliminado</span>
-                                {res.status === 'completed' && (
-                                  <button
-                                      className={styles.miniBtn}
-                                      onClick={() => setEditingAssetId(id)}
-                                      aria-label="Refinar recorte"
+
+                          {galleryView === 'grid' ? (
+                            /* GRID CARD */
+                            <>
+                              <div className={styles.imgContainer}>
+                                {res.status === 'completed' ? (
+                                  <div
+                                    className={styles.imgContainerInner}
+                                    onClick={() => {
+                                      const idx = completedResults.findIndex(r => r.id === id);
+                                      if (idx >= 0) { setLightboxIndex(idx); setLightboxOpen(true); }
+                                    }}
+                                    style={{ cursor: 'pointer' }}
+                                    onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ id, x: e.clientX, y: e.clientY }); }}
                                   >
-                                      <Scissors size={12} aria-hidden="true" /> Refinar
-                                  </button>
+                                    <div className={styles.checkerboard}></div>
+                                    <div className={styles.compareSliderOverlay}>
+                                        <CompareSlider before={res.originalUrl} after={res.processedUrl} />
+                                    </div>
+                                    <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 15, display: 'flex', gap: 4 }}>
+                                      <button
+                                        className={styles.miniIconBtn}
+                                        onClick={(e) => { e.stopPropagation(); downloadIndividual(id); }}
+                                        aria-label={`Descargar ${res.fileName}`}
+                                        title="Descargar"
+                                      >
+                                        <Download size={14} />
+                                      </button>
+                                      <button
+                                        className={styles.miniIconBtn}
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteAsset(id); }}
+                                        aria-label={`Eliminar ${res.fileName}`}
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : res.status === 'error' ? (
+                                  <div className={styles.imgContainerInner}>
+                                    <div className={styles.errorWrapper}>
+                                      <div className={styles.errorIcon}>!</div>
+                                      <p className={styles.errorMessage}>{res.errorMessage || 'Error al procesar'}</p>
+                                      <button
+                                        className={styles.retryBtn}
+                                        onClick={() => handleRetry(id)}
+                                      >
+                                        <Loader2 size={14} /> Reintentar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className={styles.imgContainerInner}>
+                                    <Loader2 className={styles.spin} />
+                                  </div>
                                 )}
                               </div>
-                          </div>
+                              <div className={styles.cardInfo}>
+                                  <div className={styles.inputGroup}>
+                                    <input
+                                        className={styles.fileNameInput}
+                                        value={res.fileName}
+                                        onChange={(e) => renameFile(res.id, e.target.value)}
+                                        aria-label="Nombre de archivo"
+                                        data-id={res.id}
+                                    />
+                                    <Pencil size={12} className={styles.editIcon} aria-hidden="true" />
+                                  </div>
+                                  {res.originalWidth && res.originalHeight && (
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: 2 }}>
+                                      {res.originalWidth} × {res.originalHeight} px
+                                    </div>
+                                  )}
+                                  <div className={styles.cardInfoRow}>
+                                    {res.status === 'completed' ? (
+                                      <>
+                                        <span className={styles.tag}>
+                                          {exportFormat === 'jpeg' ? 'Procesado' : 'Fondo Eliminado'}
+                                        </span>
+                                        <button
+                                            className={styles.miniBtn}
+                                            onClick={() => setEditingAssetId(id)}
+                                            aria-label="Refinar recorte"
+                                        >
+                                            <Scissors size={12} aria-hidden="true" /> Refinar
+                                        </button>
+                                      </>
+                                    ) : res.status === 'error' ? (
+                                      <>
+                                        <span className={styles.tag} style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Error</span>
+                                        <button
+                                            className={styles.miniBtn}
+                                            onClick={() => handleRetry(id)}
+                                            aria-label="Reintentar"
+                                        >
+                                            <Loader2 size={12} /> Reintentar
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <span className={styles.tag}>Procesando...</span>
+                                    )}
+                                  </div>
+                              </div>
+                            </>
+                          ) : (
+                            /* LIST CARD */
+                            <div
+                              className={styles.listCardInner}
+                              onClick={() => {
+                                if (res.status === 'completed') {
+                                  const idx = completedResults.findIndex(r => r.id === id);
+                                  if (idx >= 0) { setLightboxIndex(idx); setLightboxOpen(true); }
+                                }
+                              }}
+                              style={{ cursor: res.status === 'completed' ? 'pointer' : 'default' }}
+                            >
+                              <div className={styles.listCardPreview}>
+                                {res.status === 'completed' ? (
+                                  <img src={res.processedUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                ) : res.status === 'error' ? (
+                                  <div className={styles.errorWrapper} style={{ padding: '1rem' }}>
+                                    <div className={styles.errorIcon}>!</div>
+                                    <p className={styles.errorMessage}>{res.errorMessage || 'Error'}</p>
+                                    <button
+                                      className={styles.retryBtn}
+                                      onClick={(e) => { e.stopPropagation(); handleRetry(id); }}
+                                    >
+                                      <Loader2 size={14} /> Reintentar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <Loader2 className={styles.spin} />
+                                )}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <input
+                                  className={styles.fileNameInput}
+                                  value={res.fileName}
+                                  onChange={(e) => renameFile(res.id, e.target.value)}
+                                  aria-label="Nombre de archivo"
+                                  style={{ fontSize: '0.85rem', fontWeight: 500 }}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                {res.originalWidth && res.originalHeight && (
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 1, display: 'block' }}>
+                                    {res.originalWidth} × {res.originalHeight} px
+                                  </span>
+                                )}
+                                {res.status === 'completed' ? (
+                                  <span className={styles.tag} style={{ marginTop: 2 }}>
+                                    {exportFormat === 'jpeg' ? 'Procesado' : 'Fondo Eliminado'}
+                                  </span>
+                                ) : res.status === 'error' ? (
+                                  <span className={styles.tag} style={{ marginTop: 2, borderColor: 'var(--danger)', color: 'var(--danger)' }}>Error</span>
+                                ) : (
+                                  <span className={styles.tag} style={{ marginTop: 2 }}>Procesando...</span>
+                                )}
+                              </div>
+                              {res.status === 'completed' && (
+                                <>
+                                  <button
+                                      className={styles.miniBtn}
+                                      onClick={(e) => { e.stopPropagation(); downloadIndividual(id); }}
+                                      aria-label="Descargar"
+                                      title="Descargar"
+                                  >
+                                      <Download size={12} /> Descargar
+                                  </button>
+                                  <button
+                                      className={styles.miniBtn}
+                                      onClick={(e) => { e.stopPropagation(); setEditingAssetId(id); }}
+                                      aria-label="Refinar recorte"
+                                  >
+                                      <Scissors size={12} /> Refinar
+                                  </button>
+                                  <button
+                                      className={styles.miniBtn}
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteAsset(id); }}
+                                      aria-label="Eliminar"
+                                      style={{ borderColor: 'rgba(255,77,77,0.3)', color: 'var(--danger)' }}
+                                  >
+                                      <Trash2 size={12} /> Eliminar
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState view="results" onAction={() => setViewMode('upload')} />
+                  )}
                 </motion.div>
               )}
 
@@ -483,6 +1054,209 @@ export default function Home() {
                         <p className={styles.settingHint}>Reducir calidad ahorra mucho espacio con poca pérdida visual.</p>
                       </div>
 
+                      <div className={styles.settingGroup}>
+                        <h3>Color de Fondo</h3>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                          {[
+                            { label: 'Transparente', value: '' },
+                            { label: 'Blanco', value: '#FFFFFF' },
+                            { label: 'Negro', value: '#000000' },
+                            { label: 'Gris', value: '#e0e0e0' },
+                          ].map(({ label, value }) => (
+                            <button
+                              key={value}
+                              onClick={() => setBgColor(value)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '8px 14px', borderRadius: 8,
+                                background: bgColor === value ? 'var(--primary-dim)' : 'transparent',
+                                border: `1px solid ${bgColor === value ? 'var(--primary)' : 'var(--border-subtle)'}`,
+                                color: bgColor === value ? 'var(--primary)' : 'var(--text-muted)',
+                                cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem',
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              <span style={{
+                                width: 18, height: 18, borderRadius: '50%',
+                                background: value || 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'18\' height=\'18\'%3E%3Crect width=\'9\' height=\'9\' fill=\'%23ccc\'/%3E%3Crect x=\'9\' y=\'9\' width=\'9\' height=\'9\' fill=\'%23ccc\'/%3E%3Crect x=\'9\' width=\'9\' height=\'9\' fill=\'%23fff\'/%3E%3Crect y=\'9\' width=\'9\' height=\'9\' fill=\'%23fff\'/%3E%3C/svg%3E")',
+                                backgroundSize: 'cover',
+                                border: value ? 'none' : '1px solid var(--border-subtle)',
+                                flexShrink: 0,
+                              }} />
+                              {label}
+                            </button>
+                          ))}
+                          <label style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
+                            background: !['', '#FFFFFF', '#000000', '#e0e0e0'].includes(bgColor) ? 'var(--primary-dim)' : 'transparent',
+                            border: `1px solid ${!['', '#FFFFFF', '#000000', '#e0e0e0'].includes(bgColor) ? 'var(--primary)' : 'var(--border-subtle)'}`,
+                            color: !['', '#FFFFFF', '#000000', '#e0e0e0'].includes(bgColor) ? 'var(--primary)' : 'var(--text-muted)',
+                            fontFamily: 'inherit', fontSize: '0.85rem',
+                            transition: 'all 0.15s',
+                          }}>
+                            <input
+                              type="color"
+                              value={bgColor || '#FFFFFF'}
+                              onChange={(e) => setBgColor(e.target.value)}
+                              style={{ width: 24, height: 24, border: 'none', cursor: 'pointer', background: 'transparent', padding: 0 }}
+                            />
+                            Personalizado
+                          </label>
+                        </div>
+                        <p className={styles.settingHint}>
+                          {bgColor
+                            ? `Fondo sólido ${bgColor} — se aplica al exportar y descargar.`
+                            : 'Fondo transparente — ideal para PNG, el fondo se conserva al exportar.'}
+                          {exportFormat === 'jpeg' && ' JPEG no soporta transparencia, se usará blanco como fallback.'}
+                        </p>
+                      </div>
+
+                      <div className={styles.settingGroup}>
+                        <h3>Redimensionar Lote</h3>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                          <input
+                            type="checkbox"
+                            checked={resizeEnabled}
+                            onChange={(e) => setResizeEnabled(e.target.checked)}
+                            style={{ accentColor: 'var(--primary)' }}
+                          />
+                          Redimensionar al exportar
+                        </label>
+                        {resizeEnabled && (
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Ancho:</span>
+                              <input
+                                type="number"
+                                value={resizeWidth}
+                                onChange={(e) => setResizeWidth(Math.max(1, Number(e.target.value)))}
+                                min={1}
+                                max={10000}
+                                style={{
+                                  width: 90, padding: '6px 8px', borderRadius: 6,
+                                  background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+                                  color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.85rem',
+                                }}
+                              />
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>px</span>
+                            </div>
+                            <span style={{ color: 'var(--text-dim)' }}>×</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Alto:</span>
+                              <input
+                                type="number"
+                                value={resizeHeight}
+                                onChange={(e) => setResizeHeight(Math.max(1, Number(e.target.value)))}
+                                min={1}
+                                max={10000}
+                                style={{
+                                  width: 90, padding: '6px 8px', borderRadius: 6,
+                                  background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+                                  color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.85rem',
+                                }}
+                              />
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>px</span>
+                            </div>
+                          </div>
+                        )}
+                        <p className={styles.settingHint} style={{ marginTop: 8 }}>
+                          {resizeEnabled
+                            ? `Se redimensionará a ${resizeWidth}×${resizeHeight} px al exportar.`
+                            : 'Las imágenes conservan su resolución original.'}
+                        </p>
+                      </div>
+
+                      <div className={styles.settingGroup}>
+                        <h3>Plantillas de Exportación</h3>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                          {presets.length === 0 && (
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Sin plantillas guardadas.</p>
+                          )}
+                          {presets.map((p, i) => (
+                            <div key={i} style={{
+                              display: 'flex', alignItems: 'center', gap: 6,
+                              padding: '6px 10px', borderRadius: 6,
+                              background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+                            }}>
+                              <button
+                                onClick={() => {
+                                  setExportFormat(p.format as any);
+                                  setQuality(p.quality);
+                                  setBgColor(p.bgColor);
+                                  setShouldUpscale(p.upscale);
+                                  toast.addToast('success', `Plantilla "${p.name}" aplicada`);
+                                }}
+                                style={{
+                                  background: 'transparent', border: 'none',
+                                  color: 'var(--text-main)', cursor: 'pointer',
+                                  fontFamily: 'inherit', fontSize: '0.8rem',
+                                  padding: '2px 4px',
+                                }}
+                              >
+                                {p.name}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setPresets(presets.filter((_, j) => j !== i));
+                                  toast.addToast('info', `Plantilla "${p.name}" eliminada`);
+                                }}
+                                style={{
+                                  background: 'transparent', border: 'none',
+                                  color: 'var(--text-dim)', cursor: 'pointer',
+                                  padding: 2, display: 'flex',
+                                }}
+                                aria-label={`Eliminar plantilla ${p.name}`}
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {showPresetInput ? (
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={presetName}
+                              onChange={(e) => setPresetName(e.target.value)}
+                              placeholder="Nombre de la plantilla"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && presetName.trim()) {
+                                  setPresets([...presets, { name: presetName.trim(), format: exportFormat, quality, bgColor, upscale: shouldUpscale }]);
+                                  setPresetName('');
+                                  setShowPresetInput(false);
+                                  toast.addToast('success', 'Plantilla guardada');
+                                }
+                              }}
+                              autoFocus
+                              style={{
+                                flex: 1, padding: '8px 12px', borderRadius: 6,
+                                background: 'var(--bg-card)', border: '1px solid var(--border-active)',
+                                color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.9rem',
+                              }}
+                            />
+                            <button
+                              onClick={() => setShowPresetInput(false)}
+                              style={{
+                                background: 'transparent', border: '1px solid var(--border-subtle)',
+                                color: 'var(--text-muted)', padding: '8px 12px', borderRadius: 6,
+                                cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem',
+                              }}
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowPresetInput(true)}
+                            className="btn-primary"
+                            style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                          >
+                            Guardar configuración actual como plantilla
+                          </button>
+                        )}
+                      </div>
+
                       <div className={styles.settingGroupDanger}>
                         <h3 className={styles.dangerTitle}>Zona de Peligro</h3>
                         <p className={styles.dangerHint}>
@@ -525,11 +1299,64 @@ export default function Home() {
         {showConfirm && (
           <ConfirmModal
             message="¿Estás seguro de querer borrar todo el historial? Esta acción no se puede deshacer."
-            onConfirm={() => { clearHistory(); setShowConfirm(false); }}
+            onConfirm={() => { clearHistory(); setShowConfirm(false); toast.addToast('info', 'Historial borrado'); }}
             onCancel={() => setShowConfirm(false)}
           />
         )}
       </AnimatePresence>
+
+      {/* CONTEXT MENU */}
+      <ContextMenu
+        x={ctxMenu?.x ?? 0}
+        y={ctxMenu?.y ?? 0}
+        isOpen={!!ctxMenu}
+        onClose={() => setCtxMenu(null)}
+        actions={ctxMenu ? [
+          { id: 'lightbox', label: 'Ver en lightbox', icon: <Maximize2 size={14} />, action: () => {
+            const idx = completedResults.findIndex(r => r.id === ctxMenu.id);
+            if (idx >= 0) { setLightboxIndex(idx); setLightboxOpen(true); }
+          }},
+          { id: 'download', label: 'Descargar', icon: <Download size={14} />, action: () => downloadIndividual(ctxMenu.id) },
+          { id: 'rename', label: 'Renombrar', icon: <Pencil size={14} />, action: () => {
+            const input = document.querySelector(`[data-id="${ctxMenu.id}"]`) as HTMLInputElement;
+            input?.focus();
+            input?.select();
+          }},
+          { id: 'refine', label: 'Refinar recorte', icon: <Scissors size={14} />, action: () => setEditingAssetId(ctxMenu.id) },
+          { id: 'delete', label: 'Eliminar', icon: <Trash2 size={14} />, danger: true, action: () => handleDeleteAsset(ctxMenu.id) },
+        ].filter(a => results[ctxMenu.id]?.status === 'completed' || a.id === 'delete') : []}
+      />
+
+      {/* IMAGE LIGHTBOX */}
+      <ImageLightbox
+        images={lightboxImages}
+        initialIndex={lightboxIndex}
+        isOpen={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+      />
+
+      {/* EXPORT PREVIEW */}
+      <ExportPreview
+        isOpen={exportPreviewOpen}
+        onClose={() => setExportPreviewOpen(false)}
+        items={exportItems}
+        format={exportFormat}
+        quality={quality}
+        onExport={doExport}
+      />
+
+      {/* COMMAND PALETTE */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={paletteCommands}
+      />
+
+      {/* KEYBOARD SHORTCUTS */}
+      <KeyboardShortcuts
+        isOpen={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
     </div>
   );
 }

@@ -180,14 +180,11 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
     }, 100);
   };
 
-  const getPointerPos = (e: React.MouseEvent | React.TouchEvent) => {
+  const getPointerPos = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     
     const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
@@ -197,18 +194,17 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
     };
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const pointerDown = (clientX: number, clientY: number, ctrlKey: boolean) => {
       // Pan Logic
-      if (tool === 'pan' || (e.buttons === 4) || (e.button === 1)) { 
+      if (tool === 'pan') { 
           setIsDragging(true);
-          setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-          e.preventDefault();
+          setDragStart({ x: clientX - pan.x, y: clientY - pan.y });
           return;
       }
 
       // Clone Source Set Logic (Ctrl + Click)
-      if (tool === 'clone' && (e.ctrlKey || e.metaKey)) {
-          const pos = getPointerPos(e);
+      if (tool === 'clone' && ctrlKey) {
+          const pos = getPointerPos(clientX, clientY);
           setCloneSource(pos);
           alert("Origen de clonado fijado.");
           return;
@@ -230,44 +226,81 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
           snapshot.getContext('2d')?.drawImage(canvasRef.current, 0, 0);
           setCanvasSnapshot(snapshot);
           
-          const pos = getPointerPos(e);
+          const pos = getPointerPos(clientX, clientY);
           setCloneOffset({
               x: pos.x - cloneSource!.x,
               y: pos.y - cloneSource!.y
           });
       }
 
-      draw(e); 
+      doDraw(clientX, clientY); 
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const pointerMove = (clientX: number, clientY: number) => {
       if (!isDragging) return;
 
-      if (tool === 'pan' || (e.buttons === 4)) {
+      if (tool === 'pan') {
           setPan({
-              x: e.clientX - dragStart.x,
-              y: e.clientY - dragStart.y
+              x: clientX - dragStart.x,
+              y: clientY - dragStart.y
           });
       } else {
-          draw(e);
+          doDraw(clientX, clientY);
       }
   };
 
-  const handleMouseUp = () => {
+  const pointerUp = () => {
       if (isDragging) {
-          saveHistory(); // Save state after stroke
+          saveHistory();
       }
       setIsDragging(false);
       setCanvasSnapshot(null);
   };
 
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleMouseDown = (e: React.MouseEvent) => {
+      if (e.button === 1) { // middle button
+          setIsDragging(true);
+          setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+          e.preventDefault();
+          return;
+      }
+      pointerDown(e.clientX, e.clientY, e.ctrlKey || e.metaKey);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+      pointerMove(e.clientX, e.clientY);
+  };
+
+  const handleMouseUp = () => {
+      pointerUp();
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+      if (e.touches.length === 1) {
+          const t = e.touches[0];
+          pointerDown(t.clientX, t.clientY, false);
+      }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+      if (e.touches.length === 1) {
+          e.preventDefault();
+          const t = e.touches[0];
+          pointerMove(t.clientX, t.clientY);
+      }
+  };
+
+  const handleTouchEnd = () => {
+      pointerUp();
+  };
+
+  const doDraw = (clientX: number, clientY: number) => {
     if (!canvasRef.current || (tool === 'restore' && !imgOriginal)) return;
     
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
 
-    const { x, y } = getPointerPos(e);
+    const { x, y } = getPointerPos(clientX, clientY);
     
     ctx.lineWidth = brushSize;
     ctx.lineCap = 'round';
@@ -318,11 +351,9 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
        ctx.clip();
        
        // Blur Magic
-       // @ts-ignore
-       ctx.filter = 'blur(4px)';
+       (ctx as any).filter = 'blur(4px)';
        ctx.drawImage(canvasRef.current, 0, 0);
-       // @ts-ignore
-       ctx.filter = 'none'; // Reset filter
+       (ctx as any).filter = 'none';
        
        ctx.restore();
     }
@@ -408,9 +439,9 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
             ref={canvasRef}
             className={styles.canvas}
             onMouseDown={handleMouseDown}
-            onTouchStart={(e) => { setIsDragging(true); draw(e); }}
-            onTouchMove={draw}
-            onTouchEnd={() => setIsDragging(false)}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             
             style={{ 
                transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`, 
@@ -419,13 +450,13 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
           />
           
           <div className={styles.zoomControls}>
-             <button onClick={() => setScale(s => Math.max(0.1, s - 0.2))} style={{background: 'transparent', border:'none', color:'white'}}><ZoomOut size={20}/></button>
-             <span style={{color:'white', fontSize:'12px'}}>{Math.round(scale * 100)}%</span>
-             <button onClick={() => setScale(s => Math.min(10, s + 0.2))} style={{background: 'transparent', border:'none', color:'white'}}><ZoomIn size={20}/></button>
-             <button onClick={() => { setScale(1); setPan({x:0, y:0}); }} style={{background: 'transparent', border:'none', color:'#aaa', fontSize:10, marginLeft:5}}>RESET VISTA</button>
+              <button onClick={() => setScale(s => Math.max(0.1, s - 0.2))} style={{background: 'transparent', border:'none', color:'var(--text-main)'}}><ZoomOut size={20}/></button>
+             <span style={{color:'var(--text-main)', fontSize:'12px'}}>{Math.round(scale * 100)}%</span>
+             <button onClick={() => setScale(s => Math.min(10, s + 0.2))} style={{background: 'transparent', border:'none', color:'var(--text-main)'}}><ZoomIn size={20}/></button>
+             <button onClick={() => { setScale(1); setPan({x:0, y:0}); }} style={{background: 'transparent', border:'none', color:'var(--text-muted)', fontSize:10, marginLeft:5}}>RESET VISTA</button>
           </div>
 
-          <div style={{position:'absolute', bottom: 20, left: '50%', transform:'translateX(-50%)', color:'rgba(255,255,255,0.5)', fontSize:12, pointerEvents:'none'}}>
+           <div style={{position:'absolute', bottom: 20, left: '50%', transform:'translateX(-50%)', color:'var(--text-dim)', fontSize:12, pointerEvents:'none'}}>
              Espacio + Arrastrar para mover | Tampón: Ctrl+Clic
           </div>
       </div>

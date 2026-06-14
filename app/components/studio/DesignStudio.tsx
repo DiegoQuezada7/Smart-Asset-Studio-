@@ -195,7 +195,6 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
     
     canvas.on('object:modified', onModify);
     canvas.on('object:added', onModify);
-    canvas.on('object:added', onModify);
     canvas.on('object:removed', onModify);
     
     // SMART GUIDES (Snapping)
@@ -289,27 +288,10 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
         if (!activeObj) return;
 
         // Delete / Backspace
-
-        // Delete / Backspace
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            // ... (original delete logic) ...
             e.preventDefault();
             canvas.remove(activeObj);
             canvas.requestRenderAll();
-            // Trigger layer update Manually since 'object:removed' might fire async or we want instant feedback
-            // Note: object:removed event will trigger saveHistory via listener
-        }
-        
-        // Undo / Redo Shortcuts
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-            e.preventDefault();
-            undo();
-            return;
-        }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-            e.preventDefault();
-            redo();
-            return;
         }
 
         // Arrow Keys (Nudge)
@@ -317,36 +299,40 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
         if (e.key === 'ArrowUp') {
             e.preventDefault();
             activeObj.set('top', (activeObj.top || 0) - STEP);
-            // ...
             activeObj.setCoords();
             canvas.requestRenderAll();
-            saveHistory(); // Explicit save for nudges as modified might not fire on programmatic set
+            saveHistory();
         } else if (e.key === 'ArrowDown') {
-             // ...
             e.preventDefault();
             activeObj.set('top', (activeObj.top || 0) + STEP);
             activeObj.setCoords();
             canvas.requestRenderAll();
             saveHistory();
         } else if (e.key === 'ArrowLeft') {
-             // ...
-             e.preventDefault();
-             activeObj.set('left', (activeObj.left || 0) - STEP);
-             activeObj.setCoords();
-             canvas.requestRenderAll();
-             saveHistory();
+            e.preventDefault();
+            activeObj.set('left', (activeObj.left || 0) - STEP);
+            activeObj.setCoords();
+            canvas.requestRenderAll();
+            saveHistory();
         } else if (e.key === 'ArrowRight') {
-             // ...
-             e.preventDefault();
-             activeObj.set('left', (activeObj.left || 0) + STEP);
-             activeObj.setCoords();
-             canvas.requestRenderAll();
-             saveHistory();
+            e.preventDefault();
+            activeObj.set('left', (activeObj.left || 0) + STEP);
+            activeObj.setCoords();
+            canvas.requestRenderAll();
+            saveHistory();
         }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      canvas.off('object:modified', onModify);
+      canvas.off('object:added', onModify);
+      canvas.off('object:removed', onModify);
+      canvas.off('object:moving');
+      canvas.off('after:render');
+      canvas.off('mouse:up');
+    };
   }, [canvas, history, historyIndex]); // Added dependencies for Undo/Redo closure
   useEffect(() => {
       if (canvas && canvas.backgroundColor !== bgColor) {
@@ -377,10 +363,9 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
             top: center.top,
             originX: 'center',
             originY: 'center',
-            cornerColor: '#6366f1',
+            cornerColor: 'var(--primary)',
             cornerStyle: 'circle',
             transparentCorners: false,
-            // @ts-ignore custom prop
             datasetName: name
         });
         
@@ -401,8 +386,8 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
           originY: 'center',
           fontFamily: 'sans-serif',
           fontSize: 60,
-          fill: '#000000',
-          cornerColor: '#6366f1',
+          fill: '#1a1714',
+          cornerColor: 'var(--primary)',
           cornerStyle: 'circle',
           transparentCorners: false
       });
@@ -466,8 +451,10 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
   };
   
   const resizeCanvas = (w: number, h: number) => {
-      setCanvasWidth(w);
-      setCanvasHeight(h);
+      const clampedW = Math.max(50, Math.min(10000, isNaN(w) ? canvasWidth : w));
+      const clampedH = Math.max(50, Math.min(10000, isNaN(h) ? canvasHeight : h));
+      setCanvasWidth(clampedW);
+      setCanvasHeight(clampedH);
   };
 
   return (
@@ -481,7 +468,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
             </div>
             <button 
                 onClick={() => fileInputRef.current?.click()} 
-                style={{background:'transparent', border:'none', color:'#6366f1', cursor:'pointer', display:'flex', alignItems:'center', padding:4, borderRadius:4}}
+                style={{background:'transparent', border:'none', color:'var(--primary)', cursor:'pointer', display:'flex', alignItems:'center', padding:4, borderRadius:4}}
                 title="Importar imagen externa"
             >
                  <Upload size={16} />
@@ -495,8 +482,8 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
             />
          </div>
 
-         <div style={{padding:'10px', borderBottom:'1px solid #27272a', background:'#18181b'}}>
-             <p style={{fontSize:'10px', color:'#71717a', marginBottom:6, fontWeight:600, letterSpacing:0.5}}>TAMAÑO LIENZO</p>
+         <div style={{padding:'10px', borderBottom:'1px solid var(--border-subtle)', background:'var(--bg-panel)'}}>
+             <p style={{fontSize:'10px', color:'var(--text-dim)', marginBottom:6, fontWeight:600, letterSpacing:0.5}}>TAMAÑO LIENZO</p>
              
              {/* Presets */}
              <div style={{display:'flex', gap:4, marginBottom:8}}>
@@ -512,26 +499,26 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
              </div>
 
              <div style={{display:'flex', gap:8, alignItems:'center'}}>
-                 <input 
-                    className={styles.input} 
-                    type="number" 
-                    value={canvasWidth} 
-                    style={{width:'100%', background:'#27272a', border:'1px solid #3f3f46', color:'white', padding:'4px', borderRadius:4, fontSize:12}}
-                    onChange={(e) => resizeCanvas(Number(e.target.value), canvasHeight)} 
-                 />
-                 <span style={{color:'#52525b', fontSize:12}}>x</span>
-                 <input 
-                    className={styles.input} 
-                    type="number" 
-                    value={canvasHeight}
-                    style={{width:'100%', background:'#27272a', border:'1px solid #3f3f46', color:'white', padding:'4px', borderRadius:4, fontSize:12}}
-                    onChange={(e) => resizeCanvas(canvasWidth, Number(e.target.value))} 
-                 />
+                     <input 
+                        className={styles.input} 
+                        type="number" 
+                        value={canvasWidth} 
+                        style={{width:'100%', background:'var(--bg-card)', border:'1px solid var(--border-active)', color:'var(--text-main)', padding:'4px', borderRadius:4, fontSize:12}}
+                        onChange={(e) => resizeCanvas(Number(e.target.value), canvasHeight)} 
+                     />
+                     <span style={{color:'var(--text-subtle)', fontSize:12}}>x</span>
+                     <input 
+                        className={styles.input} 
+                        type="number" 
+                        value={canvasHeight}
+                        style={{width:'100%', background:'var(--bg-card)', border:'1px solid var(--border-active)', color:'var(--text-main)', padding:'4px', borderRadius:4, fontSize:12}}
+                        onChange={(e) => resizeCanvas(canvasWidth, Number(e.target.value))} 
+                     />
              </div>
          </div>
 
          <div className={styles.assetList}>
-            {(assets.length === 0 && customAssets.length === 0) && <p style={{color:'#666', fontSize:'12px', padding:'10px', textAlign:'center'}}>Sin Activos</p>}
+            {(assets.length === 0 && customAssets.length === 0) && <p style={{color:'var(--text-dim)', fontSize:'12px', padding:'10px', textAlign:'center'}}>Sin Activos</p>}
             
             {/* Standard Assets */}
             {assets.map((asset) => (
@@ -554,7 +541,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                       <X size={14} color="white" />
                   </div>
 
-                  <span style={{position:'absolute', bottom:0, background:'rgba(0,0,0,0.7)', color:'white', fontSize:9, width:'100%', padding:'2px 4px', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis'}}>
+                  <span style={{position:'absolute', bottom:0, background:'rgba(0,0,0,0.7)', color:'var(--text-main)', fontSize:9, width:'100%', padding:'2px 4px', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis'}}>
                      {asset.fileName}
                   </span>
                </div>
@@ -581,7 +568,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                       <X size={14} color="white" />
                   </div>
 
-                  <span style={{position:'absolute', bottom:0, background:'rgba(0,0,0,0.7)', color:'white', fontSize:9, width:'100%', padding:'2px 4px', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis'}}>
+                  <span style={{position:'absolute', bottom:0, background:'rgba(0,0,0,0.7)', color:'var(--text-main)', fontSize:9, width:'100%', padding:'2px 4px', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis'}}>
                      {asset.name}
                   </span>
                </div>
@@ -593,7 +580,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
       <div 
         className={styles.canvasArea} 
         ref={containerRef} 
-        style={{ display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', background:'#09090b', position: 'relative' }}
+        style={{ display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', background:'var(--bg-deep)', position: 'relative' }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
             e.preventDefault();
@@ -644,7 +631,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                     transform: `scale(${scale})`,
                     transformOrigin: 'center center',
                     boxShadow: '0 0 100px rgba(0,0,0,0.5)',
-                    border: '1px solid #333',
+                    border: '1px solid var(--border-subtle)',
                     background: bgColor, 
                     flexShrink: 0
                 }}
@@ -662,7 +649,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
               padding:'4px 12px', 
               borderRadius:20, 
               fontSize:11, 
-              color:'#aaa',
+              color:'var(--text-muted)',
               pointerEvents:'none'
           }}>
               Vista: {Math.round(scale * 100)}%
@@ -716,7 +703,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                     
                                     {/* Color */}
                                     <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:8}}>
-                                        <div style={{width: 30, height: 30, borderRadius: 4, background: selectedObject.fill as string, border:'1px solid #3f3f46', overflow:'hidden', position:'relative'}}>
+                                        <div style={{width: 30, height: 30, borderRadius: 4, background: selectedObject.fill as string, border:'1px solid var(--border-active)', overflow:'hidden', position:'relative'}}>
                                             <input 
                                                 type="color" 
                                                 value={selectedObject.fill as string} 
@@ -727,11 +714,11 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                                 style={{width:'100%', height:'100%', opacity:0, cursor:'pointer', position:'absolute', top:0, left:0}}
                                             />
                                         </div>
-                                        <span style={{fontSize:12, color:'#aaa'}}>Color</span>
+                                        <span style={{fontSize:12, color:'var(--text-muted)'}}>Color</span>
                                     </div>
 
                                     {/* Style Buttons */}
-                                    <div style={{display:'flex', gap:4, background:'#27272a', padding:4, borderRadius:6}}>
+                                    <div style={{display:'flex', gap:4, background:'var(--bg-card)', padding:4, borderRadius:6}}>
                                         <button 
                                             className={`${styles.miniBtn} ${(selectedObject.fontWeight === 'bold') ? styles.activeBtn : ''}`}
                                             onClick={() => {
@@ -754,7 +741,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                         >
                                             <Italic size={14} />
                                         </button>
-                                        <div style={{width:1, background:'#3f3f46', margin:'0 4px'}}></div>
+                                        <div style={{width:1, background:'var(--border-active)', margin:'0 4px'}}></div>
                                          <button 
                                             className={styles.miniBtn}
                                             onClick={() => { selectedObject.set('textAlign', 'left'); canvas?.requestRenderAll(); }}
@@ -780,7 +767,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                         <select 
                                             value={selectedObject.fontFamily}
                                             onChange={(e) => { selectedObject.set('fontFamily', e.target.value); canvas?.requestRenderAll(); }}
-                                            style={{width:'100%', background:'#27272a', color:'white', border:'1px solid #3f3f46', padding:4, borderRadius:4, fontSize:12, cursor:'pointer'}}
+                                            style={{width:'100%', background:'var(--bg-card)', color:'var(--text-main)', border:'1px solid var(--border-active)', padding:4, borderRadius:4, fontSize:12, cursor:'pointer'}}
                                         >
                                             <option value="sans-serif">Sans Serif</option>
                                             <option value="serif">Serif</option>
@@ -801,7 +788,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                     
                                     {/* Brightness */}
                                     <div style={{marginBottom:8}}>
-                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#aaa', marginBottom:4}}>
+                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--text-muted)', marginBottom:4}}>
                                             <span>Brillo</span>
                                             <span>{((selectedObject.filters?.find(f => f.type === 'Brightness') as any)?.brightness || 0).toFixed(2)}</span>
                                         </div>
@@ -828,7 +815,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
 
                                     {/* Contrast */}
                                     <div style={{marginBottom:8}}>
-                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#aaa', marginBottom:4}}>
+                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--text-muted)', marginBottom:4}}>
                                             <span>Contraste</span>
                                             <span>{((selectedObject.filters?.find(f => f.type === 'Contrast') as any)?.contrast || 0).toFixed(2)}</span>
                                         </div>
@@ -875,8 +862,8 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                     
                                     {/* Shadow Controls (only if enabled) */}
                                     {selectedObject.shadow && (
-                                        <div style={{paddingLeft:8, borderLeft:'2px solid #333'}}>
-                                            <div style={{fontSize:10, color:'#aaa', marginBottom:2}}>Blur</div>
+                                        <div style={{paddingLeft:8, borderLeft:'2px solid var(--border-subtle)'}}>
+                                            <div style={{fontSize:10, color:'var(--text-muted)', marginBottom:2}}>Blur</div>
                                             <input 
                                                 type="range" min="0" max="100" 
                                                 value={(selectedObject.shadow as fabric.Shadow).blur}
@@ -887,7 +874,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                                 }}
                                                 style={{width:'100%', marginBottom:4}}
                                             />
-                                            <div style={{fontSize:10, color:'#aaa', marginBottom:2}}>Distancia</div>
+                                            <div style={{fontSize:10, color:'var(--text-muted)', marginBottom:2}}>Distancia</div>
                                              <input 
                                                 type="range" min="-50" max="50" 
                                                 value={(selectedObject.shadow as fabric.Shadow).offsetX}
@@ -907,10 +894,10 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                               )}
                           </div>
                       ) : (
-                          <p style={{color:'#666', fontSize:12, textAlign:'center', marginTop:20}}>Selecciona un objeto para editar.</p>
+                          <p style={{color:'var(--text-dim)', fontSize:12, textAlign:'center', marginTop:20}}>Selecciona un objeto para editar.</p>
                       )}
 
-                      <div className={styles.divider} style={{margin:'20px 0', borderTop:'1px solid #27272a'}}></div>
+                      <div className={styles.divider} style={{margin:'20px 0', borderTop:'1px solid var(--border-subtle)'}}></div>
                       
                       <div className={styles.controlLabel} style={{marginBottom:8}}>Color Fondo</div>
                       <div style={{display:'flex', gap:8}}>
@@ -924,7 +911,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                               type="text" 
                               value={bgColor}
                               onChange={(e) => setBgColor(e.target.value)}
-                              style={{background:'#27272a', border:'1px solid #3f3f46', color:'#aaa', width:'100%', borderRadius:4, padding:'0 8px'}}
+                              style={{background:'var(--bg-card)', border:'1px solid var(--border-active)', color:'var(--text-muted)', width:'100%', borderRadius:4, padding:'0 8px'}}
                           />
                       </div>
                   </>
@@ -960,13 +947,12 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                   }
                               }}
                           >
-                              <div className={styles.layerPreview} style={{background: obj instanceof fabric.IText ? '#eee' : '#333'}}>
-                                  {/* Preview icon */}
+                               <div className={styles.layerPreview} style={{background: obj instanceof fabric.IText ? 'var(--text-muted)' : 'var(--bg-deep)'}}>
+                                   {/* Preview icon */}
                               </div>
-                              <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-                                  {/* @ts-ignore */}
-                                  {obj.datasetName || (obj.type === 'i-text' ? obj.text : obj.type)}
-                              </span>
+                               <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                                   {(obj as any).datasetName || (obj.type === 'i-text' ? (obj as any).text : obj.type)}
+                               </span>
                               <div className={styles.layerActions}>
                                   <button className={styles.miniBtn} onClick={(e) => {
                                       e.stopPropagation();
@@ -975,7 +961,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                       canvas?.requestRenderAll();
                                       updateLayers();
                                   }}>
-                                      <Eye size={12} color={obj.visible ? '#aaa' : '#444'} />
+                                      <Eye size={12} color={obj.visible ? 'var(--text-muted)' : 'var(--text-subtle)'} />
                                   </button>
                                   <button className={styles.miniBtn} onClick={(e) => {
                                       e.stopPropagation();
@@ -986,7 +972,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                       canvas?.requestRenderAll();
                                       updateLayers();
                                   }}>
-                                      <Lock size={12} color={obj.lockMovementX ? '#eab308' : '#aaa'} />
+                                      <Lock size={12} color={obj.lockMovementX ? 'var(--accent-gold)' : 'var(--text-muted)'} />
                                   </button>
                                   <button className={styles.miniBtn} onClick={(e) => {
                                       e.stopPropagation();

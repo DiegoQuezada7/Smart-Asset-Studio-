@@ -3,35 +3,43 @@ import JSZip from 'jszip';
 export async function downloadAsZip(
   results: any[], 
   format: 'png' | 'webp' | 'jpeg' = 'png', 
-  quality: number = 0.9
+  quality: number = 0.9,
+  bgColor: string = '',
+  resizeWidth?: number,
+  resizeHeight?: number,
 ) {
   const zip = new JSZip();
   let count = 0;
 
   // Helper for conversion
   const convertBlob = (blob: Blob): Promise<Blob> => {
-      // PNG (default) doesn't need re-encoding if we want max quality, 
-      // but if user wants to lower quality or change format, we must redraw.
-      // Note: canvas.toBlob for PNG usually ignores quality param in some browsers, but we'll pass it.
-      if (format === 'png' && quality > 0.95) return Promise.resolve(blob);
+      // Skip re-encoding unless we need to change format, quality, or background
+      if (format === 'png' && quality > 0.95 && !bgColor) return Promise.resolve(blob);
 
       return new Promise((resolve) => {
           const img = new Image();
           img.onload = () => {
               const canvas = document.createElement('canvas');
-              canvas.width = img.width;
-              canvas.height = img.height;
+              let drawW = img.width;
+              let drawH = img.height;
+              if (resizeWidth && resizeHeight) {
+                drawW = resizeWidth;
+                drawH = resizeHeight;
+              }
+              canvas.width = drawW;
+              canvas.height = drawH;
               const ctx = canvas.getContext('2d');
               
               if (!ctx) { resolve(blob); return; }
 
-              // JPEG needs white background (no transparency support)
-              if (format === 'jpeg') {
-                  ctx.fillStyle = '#FFFFFF';
+              // Apply background color
+              const fillColor = bgColor || (format === 'jpeg' ? '#FFFFFF' : '');
+              if (fillColor) {
+                  ctx.fillStyle = fillColor;
                   ctx.fillRect(0, 0, canvas.width, canvas.height);
               }
               
-              ctx.drawImage(img, 0, 0);
+              ctx.drawImage(img, 0, 0, drawW, drawH);
               const mime = `image/${format}`;
               
               canvas.toBlob((b) => {

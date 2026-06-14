@@ -51,3 +51,12 @@ export const updateAssetBlob = async (id: string, newProcessedBlob: Blob) => {
     await db.put(STORE_NAME, asset);
   }
 };
+
+export const renameAsset = async (id: string, newName: string) => {
+  const db = await initDB();
+  const asset = await db.get(STORE_NAME, id);
+  if (asset) {
+    asset.fileName = newName;
+    await db.put(STORE_NAME, asset);
+  }
+};

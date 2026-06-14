@@ -36,8 +36,18 @@ export default function CompareSlider({ before, after }: CompareSliderProps) {
     }
   };
 
+  const onTouchStart = () => {
+    isDragging.current = true;
+  };
+
+  const onTouchEnd = () => {
+    isDragging.current = false;
+  };
+
   const onTouchMove = (e: TouchEvent) => {
-    handleMove(e.touches[0].clientX);
+    if (isDragging.current) {
+      handleMove(e.touches[0].clientX);
+    }
   };
 
   // Add global event listeners to handle dragging outside the component
@@ -50,13 +60,25 @@ export default function CompareSlider({ before, after }: CompareSliderProps) {
             handleMove(e.clientX);
         }
     };
+    const handleGlobalTouchMove = (e: globalThis.TouchEvent) => {
+      if (isDragging.current && e.touches[0]) {
+        handleMove(e.touches[0].clientX);
+      }
+    };
+    const handleGlobalTouchEnd = () => {
+      isDragging.current = false;
+    };
 
     window.addEventListener('mouseup', handleGlobalMouseUp);
     window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('touchmove', handleGlobalTouchMove, { passive: true });
+    window.addEventListener('touchend', handleGlobalTouchEnd);
 
     return () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp);
       window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('touchmove', handleGlobalTouchMove);
+      window.removeEventListener('touchend', handleGlobalTouchEnd);
     };
   }, []);
 
@@ -65,6 +87,8 @@ export default function CompareSlider({ before, after }: CompareSliderProps) {
       className={styles.container} 
       ref={containerRef}
       onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
       onTouchMove={onTouchMove}
     >
       {/* After Image (Background/Processed) */}

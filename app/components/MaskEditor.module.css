@@ -13,12 +13,12 @@
 
 .toolbar {
   height: 60px;
-  background: #111;
+  background: var(--bg-panel);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 2rem;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .tools {
@@ -27,9 +27,9 @@
 }
 
 .toolBtn {
-  background: #222;
-  border: 1px solid #444;
-  color: #ccc;
+  background: var(--bg-card);
+  border: 1px solid var(--border-active);
+  color: var(--text-muted);
   padding: 0.5rem 1rem;
   border-radius: 6px;
   cursor: pointer;
@@ -40,14 +40,14 @@
 }
 
 .toolBtn:hover {
-  background: #333;
-  color: white;
+  background: var(--bg-elevated);
+  color: var(--text-main);
 }
 
 .toolBtn.active {
-  background: var(--primary, #6366f1);
-  border-color: var(--primary, #6366f1);
-  color: white;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
 }
 
 .canvasContainer {
@@ -58,10 +58,10 @@
   align-items: center;
   justify-content: center;
   background-image: 
-    linear-gradient(45deg, #1a1a1a 25%, transparent 25%), 
-    linear-gradient(-45deg, #1a1a1a 25%, transparent 25%), 
-    linear-gradient(45deg, transparent 75%, #1a1a1a 75%), 
-    linear-gradient(-45deg, transparent 75%, #1a1a1a 75%);
+    linear-gradient(45deg, var(--bg-elevated) 25%, transparent 25%), 
+    linear-gradient(-45deg, var(--bg-elevated) 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, var(--bg-elevated) 75%), 
+    linear-gradient(-45deg, transparent 75%, var(--bg-elevated) 75%);
   background-size: 20px 20px;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
   cursor: crosshair;
@@ -81,12 +81,12 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: #222;
+  background: var(--bg-elevated);
   padding: 8px;
   border-radius: 8px;
   display: flex;
   gap: 10px;
-  border: 1px solid #444;
+  border: 1px solid var(--border-active);
 }
 
 @keyframes fadeIn {
@@ -98,12 +98,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.8rem;
   margin-left: 1rem;
 }
 
 .slider {
   width: 100px;
-  accent-color: var(--primary, #6366f1);
+  accent-color: var(--primary);
 }
