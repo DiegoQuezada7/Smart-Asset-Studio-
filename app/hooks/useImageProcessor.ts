@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { removeBackground } from "@imgly/background-removal";
+import { removeBackground, preload } from "@imgly/background-removal";
+import type { Config } from "@imgly/background-removal";
 import { saveAsset, loadAllAssets, clearAssets, deleteAsset as deleteFromDb, updateAssetBlob, renameAsset, AssetRecord } from '../utils/storage';
 
 export interface ProcessedResult {
@@ -15,6 +16,12 @@ export interface ProcessedResult {
   originalHeight?: number;
 }
 
+const BG_CONFIG: Config = {
+  model: 'isnet_fp16',
+  proxyToWorker: true,
+  output: { format: 'image/png', quality: 0.92 },
+};
+
 function getImageDimensions(url: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -28,8 +35,35 @@ export function useImageProcessor() {
   const [results, setResults] = useState<Record<string, ProcessedResult>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentProcessingId, setCurrentProcessingId] = useState<string | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const [modelProgress, setModelProgress] = useState(0);
+  const [processingProgress, setProcessingProgress] = useState<Record<string, string>>({});
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
+  const modelPromiseRef = useRef<Promise<void> | null>(null);
+
+  const preloadModel = useCallback(async () => {
+    if (modelLoaded || modelPromiseRef.current) return modelPromiseRef.current;
+    setModelLoading(true);
+    setModelProgress(0);
+    const promise = preload({
+      ...BG_CONFIG,
+      progress: (key, current, total) => {
+        const pct = Math.round((current / total) * 100);
+        setModelProgress(pct);
+      },
+    }).then(() => {
+      setModelLoaded(true);
+      setModelLoading(false);
+    }).catch((err) => {
+      console.warn('Model preload failed, will load on demand:', err);
+      setModelLoading(false);
+      modelPromiseRef.current = null;
+    });
+    modelPromiseRef.current = promise;
+    return promise;
+  }, [modelLoaded]);
 
   const trackUrl = (url: string) => {
     if (url) objectUrlsRef.current.add(url);
@@ -115,13 +149,32 @@ export function useImageProcessor() {
 
     setResults(newResults);
 
+    // Preload model if not already loaded
+    if (!modelLoaded) {
+      setProcessingProgress(prev => ({ ...prev, _model: 'Descargando modelo de IA...' }));
+      await preloadModel();
+      setProcessingProgress(prev => { const n = { ...prev }; delete n._model; return n; });
+    }
+
     for (const task of tasks) {
       if (signal.aborted) break;
       setCurrentProcessingId(task.id);
+      setProcessingProgress(prev => ({ ...prev, [task.id]: 'Eliminando fondo...' }));
 
       try {
-        // Step 1: Background removal
-        const bgRemovedBlob = await removeBackground(task.file);
+        // Step 1: Background removal with progress
+        const bgRemovedBlob = await removeBackground(task.file, {
+          ...BG_CONFIG,
+          progress: (key, current, total) => {
+            if (key === 'compute:inference') {
+              setProcessingProgress(prev => ({ ...prev, [task.id]: 'Analizando imagen...' }));
+            } else if (key === 'compute:mask') {
+              setProcessingProgress(prev => ({ ...prev, [task.id]: 'Aplicando máscara...' }));
+            } else if (key === 'compute:encode') {
+              setProcessingProgress(prev => ({ ...prev, [task.id]: 'Codificando resultado...' }));
+            }
+          },
+        });
 
         if (signal.aborted) break;
 
@@ -129,6 +182,7 @@ export function useImageProcessor() {
 
         // Step 2: Upscale if enabled (2x)
         if (upscaleEnabled) {
+          setProcessingProgress(prev => ({ ...prev, [task.id]: 'Aplicando upscale...' }));
           try {
             const { default: Upscaler } = await import('upscaler');
             const upscaler = new Upscaler();
@@ -167,6 +221,8 @@ export function useImageProcessor() {
         const processedBlob = finalBlob;
         const processedUrl = trackUrl(URL.createObjectURL(processedBlob));
 
+        setProcessingProgress(prev => { const n = { ...prev }; delete n[task.id]; return n; });
+
         setResults(prev => ({
           ...prev,
           [task.id]: {
@@ -190,6 +246,8 @@ export function useImageProcessor() {
         if (error?.name === 'AbortError') break;
         const msg = error?.message || error?.toString() || 'Error desconocido';
         console.error(msg);
+
+        setProcessingProgress(prev => { const n = { ...prev }; delete n[task.id]; return n; });
 
         setResults(prev => ({
           ...prev,
@@ -219,17 +277,34 @@ export function useImageProcessor() {
     abortRef.current = new AbortController();
     const { signal } = abortRef.current;
 
+    // Preload model if not already loaded
+    if (!modelLoaded) {
+      await preloadModel();
+    }
+
+    setProcessingProgress(prev => ({ ...prev, [id]: 'Eliminando fondo...' }));
+
     try {
       const response = await fetch(asset.originalUrl);
       const fileBlob = await response.blob();
       const file = new File([fileBlob], asset.fileName, { type: fileBlob.type });
 
-      const bgRemovedBlob = await removeBackground(file);
+      const bgRemovedBlob = await removeBackground(file, {
+        ...BG_CONFIG,
+        progress: (key) => {
+          if (key === 'compute:inference') {
+            setProcessingProgress(prev => ({ ...prev, [id]: 'Analizando imagen...' }));
+          } else if (key === 'compute:mask') {
+            setProcessingProgress(prev => ({ ...prev, [id]: 'Aplicando máscara...' }));
+          }
+        },
+      });
       if (signal.aborted) return;
 
       let finalBlob = bgRemovedBlob;
 
       if (upscaleEnabled) {
+        setProcessingProgress(prev => ({ ...prev, [id]: 'Aplicando upscale...' }));
         try {
           const { default: Upscaler } = await import('upscaler');
           const upscaler = new Upscaler();
@@ -264,6 +339,8 @@ export function useImageProcessor() {
 
       if (signal.aborted) return;
 
+      setProcessingProgress(prev => { const n = { ...prev }; delete n[id]; return n; });
+
       revokeUrl(asset.processedUrl);
       const processedUrl = trackUrl(URL.createObjectURL(finalBlob));
 
@@ -282,6 +359,7 @@ export function useImageProcessor() {
 
     } catch (error: any) {
       const msg = error?.message || 'Error al reintentar';
+      setProcessingProgress(prev => { const n = { ...prev }; delete n[id]; return n; });
       setResults(prev => ({
         ...prev,
         [id]: {
@@ -294,7 +372,7 @@ export function useImageProcessor() {
 
     setIsProcessing(false);
     abortRef.current = null;
-  }, [results]);
+  }, [results, modelLoaded, preloadModel]);
 
   const clearHistory = useCallback(async () => {
     revokeAllUrls();
@@ -402,6 +480,11 @@ export function useImageProcessor() {
     results,
     isProcessing,
     currentProcessingId,
+    modelLoading,
+    modelLoaded,
+    modelProgress,
+    processingProgress,
+    preloadModel,
     processImages,
     processBatch,
     cancelProcessing,

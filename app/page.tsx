@@ -75,7 +75,7 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
 
 export default function Home() {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
-  const { results, isProcessing, currentProcessingId, processImages, processBatch, cancelProcessing, retryAsset, clearHistory, updateResultBlob, deleteAsset, deleteMultiple, renameFile, renameBatch } = useImageProcessor();
+  const { results, isProcessing, currentProcessingId, modelLoading, modelLoaded, modelProgress, processingProgress, processImages, processBatch, cancelProcessing, retryAsset, clearHistory, updateResultBlob, deleteAsset, deleteMultiple, renameFile, renameBatch } = useImageProcessor();
   const [viewMode, setViewMode] = useState<'dashboard' | 'upload' | 'results' | 'settings' | 'studio'>('dashboard');
   const [showSeoMenu, setShowSeoMenu] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
@@ -330,24 +330,8 @@ export default function Home() {
     });
   }, [results, colorPalettes, extractPalette]);
 
-  // Processing queue state - track individual processing steps
-  const [processingSteps, setProcessingSteps] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (!isProcessing || !currentProcessingId) return;
-    setProcessingSteps(prev => ({
-      ...prev,
-      [currentProcessingId]: 'Procesando...'
-    }));
-    const timers = [1, 2, 3].map(sec => setTimeout(() => {
-      if (!currentProcessingId) return;
-      const steps = ['Eliminando fondo...', 'Aplicando upscale...', 'Optimizando...'];
-      setProcessingSteps(prev => ({
-        ...prev,
-        [currentProcessingId]: steps[sec - 1] || 'Procesando...'
-      }));
-    }, sec * 2000));
-    return () => timers.forEach(clearTimeout);
-  }, [isProcessing, currentProcessingId]);
+  // Real processing progress from the AI library
+  const processingSteps = processingProgress;
 
   // Confirm before close if processing
   useEffect(() => {
@@ -763,15 +747,15 @@ export default function Home() {
                 )}
               </AnimatePresence>
 
-            {isProcessing && (
+            {(isProcessing || modelLoading) && (
               <div
                 className={styles.progressBarLava}
-                style={{ width: `${progressPct}%` }}
+                style={{ width: `${modelLoading ? modelProgress : progressPct}%` }}
                 role="progressbar"
-                aria-valuenow={progressPct}
+                aria-valuenow={modelLoading ? modelProgress : progressPct}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-label={`Progreso: ${completedCount} de ${totalCount}`}
+                aria-label={modelLoading ? 'Descargando modelo de IA...' : `Progreso: ${completedCount} de ${totalCount}`}
               />
             )}
             </header>
