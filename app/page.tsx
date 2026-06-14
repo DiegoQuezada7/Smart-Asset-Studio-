@@ -1,7 +1,7 @@
 "use client";
 
 import { useDropzone } from "react-dropzone";
-import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette, Settings, Layers, Grid3X3, List, ArrowUpDown, ZoomIn, Maximize2 } from "lucide-react";
+import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette, Settings, Layers, Grid3X3, List, ArrowUpDown, ZoomIn, Maximize2, Home as HomeIcon, Clock, BarChart3, Play, Monitor, Eye, Focus, Zap, RefreshCw } from "lucide-react";
 import { useCallback, useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import styles from "./page.module.css";
@@ -19,6 +19,8 @@ import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import ImageLightbox from "./components/ImageLightbox";
 import ExportPreview from "./components/ExportPreview";
 import ContextMenu from "./components/ContextMenu";
+import PresentationMode from "./components/PresentationMode";
+import ProcessingTimeline from "./components/ProcessingTimeline";
 
 interface FileWithPreview extends File {
   preview: string;
@@ -74,7 +76,7 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
 export default function Home() {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const { results, isProcessing, currentProcessingId, processImages, processBatch, cancelProcessing, retryAsset, clearHistory, updateResultBlob, deleteAsset, deleteMultiple, renameFile, renameBatch } = useImageProcessor();
-  const [viewMode, setViewMode] = useState<'upload' | 'results' | 'settings' | 'studio'>('upload');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'upload' | 'results' | 'settings' | 'studio'>('dashboard');
   const [showSeoMenu, setShowSeoMenu] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -158,6 +160,7 @@ export default function Home() {
     const toExport = completedResults.filter(r => selectedIds.includes(r.id));
     if (toExport.length > 0) {
       await downloadAsZip(toExport, exportFormat, quality / 100, bgColor, resizeEnabled ? resizeWidth : undefined, resizeEnabled ? resizeHeight : undefined);
+      setTotalExports(prev => prev + toExport.length);
       toast.addToast('success', `Exportación completada — ${toExport.length} archivo${toExport.length !== 1 ? 's' : ''}`);
     }
     setExportPreviewOpen(false);
@@ -258,6 +261,94 @@ export default function Home() {
     }
   };
 
+  // Focus Mode (Zen)
+  const [focusMode, setFocusMode] = useState(false);
+
+  // Presentation mode
+  const [presentationOpen, setPresentationOpen] = useState(false);
+  const [presentationIndex, setPresentationIndex] = useState(0);
+
+  // Color palette extracted from images
+  const [colorPalettes, setColorPalettes] = useState<Record<string, string[]>>({});
+
+  // Timeline processing
+  const [timelineOpen, setTimelineOpen] = useState(false);
+
+  // Stats for dashboard
+  const [totalExports, setTotalExports] = useLocalStorage('total_exports', 0);
+  const stats = useMemo(() => {
+    const completed = Object.values(results).filter(r => r.status === 'completed');
+    return {
+      totalProcessed: completed.length,
+      totalExports,
+      timeSaved: completed.length * 45,
+      recentImages: completed.slice(-6).reverse(),
+    };
+  }, [results, totalExports]);
+
+  // Extract color palette from an image URL
+  const extractPalette = useCallback(async (imageUrl: string): Promise<string[]> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(['#c9603c', '#d4a76a', '#7a8b72']); return; }
+        ctx.drawImage(img, 0, 0, 50, 50);
+        const imageData = ctx.getImageData(0, 0, 50, 50).data;
+        const colorCounts: Record<string, number> = {};
+        for (let i = 0; i < imageData.length; i += 16) {
+          const r = Math.round(imageData[i] / 32) * 32;
+          const g = Math.round(imageData[i + 1] / 32) * 32;
+          const b = Math.round(imageData[i + 2] / 32) * 32;
+          const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+          colorCounts[hex] = (colorCounts[hex] || 0) + 1;
+        }
+        const sorted = Object.entries(colorCounts)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([color]) => color);
+        resolve(sorted);
+      };
+      img.onerror = () => resolve(['#c9603c', '#d4a76a', '#7a8b72']);
+      img.src = imageUrl;
+    });
+  }, []);
+
+  // Extract palettes for all completed results
+  useEffect(() => {
+    const completed = Object.values(results).filter(r => r.status === 'completed');
+    completed.forEach(r => {
+      if (!colorPalettes[r.id]) {
+        extractPalette(r.processedUrl).then(palette => {
+          setColorPalettes(prev => ({ ...prev, [r.id]: palette }));
+        });
+      }
+    });
+  }, [results, colorPalettes, extractPalette]);
+
+  // Processing queue state - track individual processing steps
+  const [processingSteps, setProcessingSteps] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!isProcessing || !currentProcessingId) return;
+    setProcessingSteps(prev => ({
+      ...prev,
+      [currentProcessingId]: 'Procesando...'
+    }));
+    const timers = [1, 2, 3].map(sec => setTimeout(() => {
+      if (!currentProcessingId) return;
+      const steps = ['Eliminando fondo...', 'Aplicando upscale...', 'Optimizando...'];
+      setProcessingSteps(prev => ({
+        ...prev,
+        [currentProcessingId]: steps[sec - 1] || 'Procesando...'
+      }));
+    }, sec * 2000));
+    return () => timers.forEach(clearTimeout);
+  }, [isProcessing, currentProcessingId]);
+
   // Confirm before close if processing
   useEffect(() => {
     if (!isProcessing) return;
@@ -284,10 +375,11 @@ export default function Home() {
   const isStudioActive = viewMode === 'studio';
 
   useKeyboard([
-    { key: '1', handler: () => setViewMode('upload'), enabled: !isStudioActive },
-    { key: '2', handler: () => hasResults && setViewMode('results'), enabled: !isStudioActive },
-    { key: '3', handler: () => setViewMode('studio'), enabled: !isStudioActive },
-    { key: '4', handler: () => setViewMode('settings'), enabled: !isStudioActive },
+    { key: '1', handler: () => setViewMode('dashboard'), enabled: !isStudioActive },
+    { key: '2', handler: () => setViewMode('upload'), enabled: !isStudioActive },
+    { key: '3', handler: () => hasResults && setViewMode('results'), enabled: !isStudioActive },
+    { key: '4', handler: () => setViewMode('studio'), enabled: !isStudioActive },
+    { key: '5', handler: () => setViewMode('settings'), enabled: !isStudioActive },
     { key: 'e', handler: handleExport, enabled: !isStudioActive },
     { key: '?', handler: () => setShortcutsOpen(true) },
     { key: 'k', ctrl: true, handler: () => setCommandPaletteOpen(true) },
@@ -301,12 +393,14 @@ export default function Home() {
   ]);
 
   const paletteCommands = useMemo(() => [
-    { id: 'upload', label: 'Ir a Mesa de Trabajo', shortcut: '1', icon: <Upload size={16} />, action: () => setViewMode('upload') },
-    { id: 'results', label: 'Ir a Resultados', shortcut: '2', icon: <ImageIcon size={16} />, action: () => hasResults && setViewMode('results'), enabled: hasResults },
-    { id: 'studio', label: 'Ir a Design Studio', shortcut: '3', icon: <Palette size={16} />, action: () => setViewMode('studio') },
-    { id: 'settings', label: 'Ir a Ajustes', shortcut: '4', icon: <Settings size={16} />, action: () => setViewMode('settings') },
+    { id: 'dashboard', label: 'Ir a Dashboard', shortcut: '1', icon: <HomeIcon size={16} />, action: () => setViewMode('dashboard') },
+    { id: 'upload', label: 'Ir a Mesa de Trabajo', shortcut: '2', icon: <Upload size={16} />, action: () => setViewMode('upload') },
+    { id: 'results', label: 'Ir a Resultados', shortcut: '3', icon: <ImageIcon size={16} />, action: () => hasResults && setViewMode('results'), enabled: hasResults },
+    { id: 'studio', label: 'Ir a Design Studio', shortcut: '4', icon: <Palette size={16} />, action: () => setViewMode('studio') },
+    { id: 'settings', label: 'Ir a Ajustes', shortcut: '5', icon: <Settings size={16} />, action: () => setViewMode('settings') },
     { id: 'export', label: 'Exportar Todo', shortcut: 'E', icon: <Download size={16} />, action: handleExport, enabled: completedResults.length > 0 },
     { id: 'process', label: 'Procesar Archivos', shortcut: '', icon: <Sparkles size={16} />, action: handleProcess, enabled: files.length > 0 && !isProcessing },
+    { id: 'presentation', label: 'Modo Presentación', shortcut: '', icon: <Monitor size={16} />, action: () => { if (completedResults.length > 0) { setPresentationIndex(0); setPresentationOpen(true); } }, enabled: completedResults.length > 0 },
     { id: 'shortcuts', label: 'Ver Atajos de Teclado', shortcut: '?', icon: <Maximize2 size={16} />, action: () => setShortcutsOpen(true) },
   ], [viewMode, hasResults, completedResults, handleExport, handleProcess, files, isProcessing]);
 
@@ -318,39 +412,45 @@ export default function Home() {
   return (
     <div className={styles.container}>
       {/* Sidebar Navigation */}
-      <aside className={styles.sidebar}>
+      <aside className={`${styles.sidebar} ${focusMode ? styles.sidebarCollapsed : ''}`}>
         <div className={styles.logo}>
           <div className={styles.logoIcon}>
             <Layers size={14} color="#fff" aria-hidden="true" />
           </div>
-          <span>SmartAsset</span>
+          {!focusMode && <span>SmartAsset</span>}
         </div>
 
         <nav className={styles.nav}>
           <button
+            className={`${styles.navItem} ${viewMode === 'dashboard' ? styles.active : ''}`}
+            onClick={() => setViewMode('dashboard')}
+          >
+            <HomeIcon size={16} /> {!focusMode && 'Dashboard'}
+          </button>
+          <button
             className={`${styles.navItem} ${viewMode === 'upload' ? styles.active : ''}`}
             onClick={() => setViewMode('upload')}
           >
-            <Upload size={16} /> Mesa de Trabajo
+            <Upload size={16} /> {!focusMode && 'Mesa de Trabajo'}
           </button>
           <button
              className={`${styles.navItem} ${viewMode === 'results' ? styles.active : ''}`}
              onClick={() => hasResults && setViewMode('results')}
              disabled={!hasResults}
           >
-            <ImageIcon size={16} /> Resultados {hasResults && <span className={styles.badge}>{Object.keys(results).length}</span>}
+            <ImageIcon size={16} /> {!focusMode && <>Resultados {hasResults && <span className={styles.badge}>{Object.keys(results).length}</span>}</>}
           </button>
           <button
              className={`${styles.navItem} ${viewMode === 'studio' ? styles.active : ''}`}
              onClick={() => setViewMode('studio')}
           >
-             <Palette size={16} /> Design Studio
+             <Palette size={16} /> {!focusMode && 'Design Studio'}
           </button>
           <button
             className={`${styles.navItem} ${viewMode === 'settings' ? styles.active : ''}`}
             onClick={() => setViewMode('settings')}
           >
-            <Settings size={16} /> Ajustes
+            <Settings size={16} /> {!focusMode && 'Ajustes'}
           </button>
         </nav>
 
@@ -400,12 +500,14 @@ export default function Home() {
         <header className={styles.header}>
             <div className={styles.headerContent}>
               <h1>
+                {viewMode === 'dashboard' && 'Dashboard'}
                 {viewMode === 'upload' && 'Mesa de Trabajo'}
                 {viewMode === 'results' && 'Activos Procesados'}
                 {viewMode === 'settings' && 'Configuración'}
                 {viewMode === 'studio' && 'Design Studio'}
               </h1>
               <p>
+                {viewMode === 'dashboard' && 'Resumen de tu actividad y acceso rápido'}
                 {viewMode === 'upload' && 'Sube y gestiona tus imágenes'}
                 {viewMode === 'results' && 'Revisa y exporta tus activos optimizados'}
                 {viewMode === 'settings' && 'Personaliza tu flujo de trabajo'}
@@ -663,7 +765,7 @@ export default function Home() {
 
             {isProcessing && (
               <div
-                className={styles.progressBar}
+                className={styles.progressBarLava}
                 style={{ width: `${progressPct}%` }}
                 role="progressbar"
                 aria-valuenow={progressPct}
@@ -684,8 +786,112 @@ export default function Home() {
                       exportFormat={exportFormat}
                       quality={quality / 100}
                       onDeleteAsset={deleteAsset}
+                      focusMode={focusMode}
                   />
               </div>
+
+              {/* DASHBOARD VIEW */}
+              {viewMode === 'dashboard' && (
+                <motion.div
+                  key="dashboard"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.25 }}
+                  className={styles.dashboard}
+                >
+                  <div className={styles.dashboardMain}>
+                    <div className={styles.dashHeader}>
+                      <div>
+                        <h2 className={styles.dashTitle}>
+                          Buenas {stats.totalProcessed > 0 ? 'de vuelta' : 'bienvenido'}
+                        </h2>
+                        <p className={styles.dashSubtitle}>
+                          {stats.totalProcessed > 0
+                            ? `${stats.totalProcessed} imágenes procesadas · ${stats.timeSaved}s ahorrados`
+                            : 'Sube tu primera imagen para empezar'}
+                        </p>
+                      </div>
+                      <div className={styles.dashQuickActions}>
+                        <button className={styles.dashQuickBtn} onClick={() => setViewMode('upload')}>
+                          <Upload size={16} /> Subir
+                        </button>
+                        {completedResults.length > 0 && (
+                          <>
+                            <button className={styles.dashQuickBtn} onClick={() => setViewMode('results')}>
+                              <ImageIcon size={16} /> Resultados
+                            </button>
+                            <button className={styles.dashQuickBtn} onClick={() => { setPresentationIndex(0); setPresentationOpen(true); }}>
+                              <Monitor size={16} /> Presentar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.statsGrid}>
+                    <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+                      <div className={styles.statIcon}><ImageIcon size={20} /></div>
+                      <div className={styles.statNumber}>{stats.totalProcessed}</div>
+                      <div className={styles.statLabel}>Imágenes procesadas</div>
+                    </motion.div>
+                    <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+                      <div className={styles.statIcon} style={{ background: 'rgba(212,167,106,0.12)', color: 'var(--accent-gold)' }}><Download size={20} /></div>
+                      <div className={styles.statNumber}>{stats.totalExports}</div>
+                      <div className={styles.statLabel}>Exportaciones realizadas</div>
+                    </motion.div>
+                    <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+                      <div className={styles.statIcon} style={{ background: 'rgba(107,143,94,0.12)', color: 'var(--success)' }}><Zap size={20} /></div>
+                      <div className={styles.statNumber}>{stats.timeSaved}s</div>
+                      <div className={styles.statLabel}>Tiempo ahorrado</div>
+                    </motion.div>
+                  </div>
+
+                  {stats.recentImages.length > 0 && (
+                    <div className={styles.recentSection}>
+                      <div className={styles.sectionHeader}>
+                        <h3 className={styles.sectionTitle}>Recientes</h3>
+                        <button className={styles.sectionAction} onClick={() => setTimelineOpen(true)}>
+                          <Clock size={14} style={{ marginRight: 4 }} />
+                          Ver timeline
+                        </button>
+                      </div>
+                      <div className={styles.recentGrid}>
+                        {stats.recentImages.map((r, i) => (
+                          <motion.div
+                            key={r.id}
+                            className={styles.recentCard}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.1 + i * 0.05 }}
+                            onClick={() => {
+                              const idx = completedResults.findIndex(cr => cr.id === r.id);
+                              if (idx >= 0) { setLightboxIndex(idx); setLightboxOpen(true); }
+                            }}
+                          >
+                            <img src={r.processedUrl} alt={r.fileName} />
+                            <div className={styles.recentCardOverlay}>
+                              <span className={styles.recentCardName}>{r.fileName}</span>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.totalProcessed === 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                      style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', paddingTop: '2rem' }}
+                    >
+                      <EmptyState view="upload" onAction={() => setViewMode('upload')} />
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
 
               {/* ANIMATED VIEWS */}
               <AnimatePresence mode="wait">
@@ -716,7 +922,7 @@ export default function Home() {
                               value={file}
                               key={file.name}
                               as="div"
-                              className={styles.card}
+                              className={`${styles.card} ${styles.cardLiftGlow}`}
                               style={{ listStyle: 'none', cursor: 'grab' }}
                               whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
                             >
@@ -734,6 +940,20 @@ export default function Home() {
                                     >
                                       <X size={14} />
                                     </button>
+                                  )}
+
+                                  {isProcessing && status === undefined && (
+                                    <div className={styles.processingOverlay}>
+                                      <Loader2 size={20} className={styles.processingSpinner} />
+                                      <span className={styles.processingStep}>En cola</span>
+                                    </div>
+                                  )}
+
+                                  {status === 'processing' && (
+                                    <div className={styles.processingOverlay}>
+                                      <Loader2 size={20} className={styles.processingSpinner} />
+                                      <span className={styles.processingStep}>{processingSteps[file.name] || 'Procesando...'}</span>
+                                    </div>
                                   )}
 
                                   {status === 'completed' && (
@@ -789,7 +1009,7 @@ export default function Home() {
                       style={galleryView === 'grid' ? { gridTemplateColumns: gridCols } : undefined}
                     >
                       {sortedResults.map(([id, res]) => (
-                        <div key={id} className={galleryView === 'grid' ? styles.card : styles.listCard}>
+                        <div key={id} className={`${galleryView === 'grid' ? `${styles.card} ${styles.cardLiftGlow}` : styles.listCard}`}>
                           {/* Checkbox (always visible) */}
                           <div
                             style={{
@@ -913,6 +1133,19 @@ export default function Home() {
                                       <span className={styles.tag}>Procesando...</span>
                                     )}
                                   </div>
+                                  {res.status === 'completed' && colorPalettes[id] && (
+                                    <div className={styles.paletteContainer}>
+                                      {colorPalettes[id].map((color, ci) => (
+                                        <div
+                                          key={ci}
+                                          className={styles.paletteSwatch}
+                                          style={{ background: color }}
+                                          title={color}
+                                          onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(color); toast.addToast('info', `Color ${color} copiado`); }}
+                                        />
+                                      ))}
+                                    </div>
+                                  )}
                               </div>
                             </>
                           ) : (
@@ -1356,6 +1589,33 @@ export default function Home() {
       <KeyboardShortcuts
         isOpen={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+
+      {/* FOCUS MODE TOGGLE */}
+      {viewMode === 'studio' && (
+        <button
+          className={`${styles.focusToggle} ${focusMode ? styles.focusToggleActive : ''}`}
+          onClick={() => setFocusMode(!focusMode)}
+          title={focusMode ? 'Salir de modo foco' : 'Modo foco (Sin distracciones)'}
+        >
+          <Focus size={18} />
+        </button>
+      )}
+
+      {/* PRESENTATION MODE */}
+      <PresentationMode
+        images={lightboxImages}
+        currentIndex={presentationIndex}
+        isOpen={presentationOpen}
+        onClose={() => setPresentationOpen(false)}
+        onIndexChange={setPresentationIndex}
+      />
+
+      {/* PROCESSING TIMELINE */}
+      <ProcessingTimeline
+        results={results}
+        isOpen={timelineOpen}
+        onClose={() => setTimelineOpen(false)}
       />
     </div>
   );

@@ -28,6 +28,8 @@ describe('ToastContext', () => {
     act(() => result.current.addToast('error', 'Auto-remove'));
     expect(result.current.toasts).toHaveLength(1);
     act(() => { vi.advanceTimersByTime(4000); });
+    // After timeout, sets exiting=true, then removes after 200ms exit animation
+    act(() => { vi.advanceTimersByTime(200); });
     expect(result.current.toasts).toHaveLength(0);
   });
 
@@ -36,6 +38,8 @@ describe('ToastContext', () => {
     act(() => result.current.addToast('info', 'Manual remove'));
     const id = result.current.toasts[0].id;
     act(() => result.current.removeToast(id));
+    // Sets exiting=true immediately, then removes after 200ms
+    act(() => { vi.advanceTimersByTime(200); });
     expect(result.current.toasts).toHaveLength(0);
   });
 

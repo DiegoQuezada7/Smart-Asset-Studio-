@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
-export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T) => void] {
+export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((prev: T) => T)) => void] {
   // Initialize state with initialValue to match Server Side Rendering (SSR)
   // and avoid hydration mismatch errors.
   const [storedValue, setStoredValue] = useState<T>(initialValue);
@@ -21,7 +21,7 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T)
     }
   }, [key]);
 
-  const setValue = (value: T | ((val: T) => T)) => {
+  const setValue = (value: T | ((prev: T) => T)) => {
     try {
       // Allow value to be a function so we have same API as useState
       const valueToStore = value instanceof Function ? value(storedValue) : value;

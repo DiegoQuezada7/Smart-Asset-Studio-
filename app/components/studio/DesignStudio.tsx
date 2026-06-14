@@ -2,10 +2,35 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric'; 
-import { Download, Type, Image as ImageIcon, Layers, Move, Trash, Square, ChevronUp, ChevronDown, Eye, Lock, Upload, X, Bold, Italic, AlignCenter, AlignLeft, AlignRight, Smartphone, Monitor } from 'lucide-react';
+import { Download, Type, Image as ImageIcon, Layers, Move, Trash, Square, ChevronUp, ChevronDown, Eye, Lock, Upload, X, Bold, Italic, AlignCenter, AlignLeft, AlignRight, AlignStartVertical, AlignEndVertical, Smartphone, Monitor, LayoutTemplate, Sun, Thermometer, Contrast, Palette, Blend, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Focus } from 'lucide-react';
 import styles from './DesignStudio.module.css';
 import { ProcessedResult } from '../../hooks/useImageProcessor';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+
+interface TemplatePreset {
+  name: string;
+  width: number;
+  height: number;
+  bg: string;
+  description: string;
+}
+
+const TEMPLATES: TemplatePreset[] = [
+  { name: 'Amazon', width: 1000, height: 1000, bg: '#ffffff', description: 'Cuadrado 1:1' },
+  { name: 'Etsy', width: 2000, height: 2000, bg: '#ffffff', description: 'Cuadrado premium' },
+  { name: 'eBay', width: 1600, height: 1600, bg: '#ffffff', description: 'Cuadrado estándar' },
+  { name: 'Instagram', width: 1080, height: 1080, bg: '#ffffff', description: 'Feed cuadrado' },
+  { name: 'Pinterest', width: 1000, height: 1500, bg: '#ffffff', description: 'Vertical 2:3' },
+  { name: 'Shopify', width: 2048, height: 2048, bg: '#ffffff', description: 'Alta resolución' },
+  { name: 'Mercado Libre', width: 800, height: 800, bg: '#ffffff', description: 'Estándar ML' },
+  { name: 'Lifestyle', width: 1920, height: 1080, bg: '#f5f0eb', description: 'Panorámico' },
+];
+
+const BLEND_MODES = [
+  'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',
+  'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference',
+  'exclusion', 'hue', 'saturation', 'color', 'luminosity',
+];
 
 interface DesignStudioProps {
   assets?: ProcessedResult[]; 
@@ -13,9 +38,10 @@ interface DesignStudioProps {
   exportFormat: 'png' | 'webp' | 'jpeg';
   quality: number;
   onDeleteAsset?: (id: string) => void;
+  focusMode?: boolean;
 }
 
-export default function DesignStudio({ assets = [], onBack, exportFormat, quality, onDeleteAsset }: DesignStudioProps) {
+export default function DesignStudio({ assets = [], onBack, exportFormat, quality, onDeleteAsset, focusMode = false }: DesignStudioProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,6 +53,8 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
   const [activeTab, setActiveTab] = useState<'properties' | 'layers'>('properties');
   const [layers, setLayers] = useState<fabric.Object[]>([]);
   const [bgColor, setBgColor] = useState('#ffffff');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [blendMode, setBlendMode] = useState('normal');
   
   // Canvas Dimensions & Scale (Persistent)
   const [canvasWidth, setCanvasWidth] = useLocalStorage('studio_width', 1080);
@@ -197,67 +225,107 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
     canvas.on('object:added', onModify);
     canvas.on('object:removed', onModify);
     
-    // SMART GUIDES (Snapping)
-    let guidelines = { v: false, h: false };
+    // SMART GUIDES (Snapping) — Enhanced with edge snapping
+    let guidelines: { v: number; h: number }[] = [];
 
     canvas.on('object:moving', (e) => {
         const obj = e.target;
         if (!obj || !canvas) return;
 
-        const w = obj.width! * obj.scaleX!;
-        const h = obj.height! * obj.scaleY!;
-        const centerX = obj.left! + w / 2; // For originX technically depends but lets assume center for now or adjust
-        // Simplify: assume origin is center for now (as we set it in addImage) or calculate based on origin.
-        // Actually DesignStudio sets originX/Y to center for images. Text is default (left/top). 
-        // We will snap based on the object's current generic center point.
-        const centerPoint = obj.getCenterPoint();
+        const bounds = obj.getBoundingRect();
+        const { left, top, width, height } = bounds;
+        const right = left + width;
+        const bottom = top + height;
+        const centerX = left + width / 2;
+        const centerY = top + height / 2;
+        const cw = canvas.width!;
+        const ch = canvas.height!;
 
-        const canvasCenter = { x: canvas.width! / 2, y: canvas.height! / 2 };
-        const SNAP_DIST = 10;
+        const SNAP_DIST = 8;
+        const snapTargets = [
+            { x: 0, label: 'left' },
+            { x: cw / 2, label: 'center-h' },
+            { x: cw, label: 'right' },
+        ];
+        const snapTargetsY = [
+            { y: 0, label: 'top' },
+            { y: ch / 2, label: 'center-v' },
+            { y: ch, label: 'bottom' },
+        ];
 
-        guidelines.v = false;
-        guidelines.h = false;
+        guidelines = [];
 
-        // Snap Vertical (Center X)
-        if (Math.abs(centerPoint.x - canvasCenter.x) < SNAP_DIST) {
-            obj.setPositionByOrigin(new fabric.Point(canvasCenter.x, centerPoint.y), 'center', 'center');
-            guidelines.v = true;
+        let snapX: number | null = null;
+        let snapY: number | null = null;
+
+        // Check horizontal snaps
+        const xChecks = [
+            { point: left, refs: snapTargets },
+            { point: centerX, refs: snapTargets },
+            { point: right, refs: snapTargets },
+        ];
+        for (const check of xChecks) {
+            for (const target of check.refs) {
+                if (Math.abs(check.point - target.x) < SNAP_DIST) {
+                    const dx = target.x - check.point;
+                    obj.left = (obj.left || 0) + dx;
+                    obj.setCoords();
+                    guidelines.push({ v: target.x, h: -1 });
+                    snapX = target.x;
+                    break;
+                }
+            }
+            if (snapX !== null) break;
         }
 
-        // Snap Horizontal (Center Y)
-        if (Math.abs(centerPoint.y - canvasCenter.y) < SNAP_DIST) {
-            obj.setPositionByOrigin(new fabric.Point(centerPoint.x || obj.getCenterPoint().x, canvasCenter.y), 'center', 'center');
-            guidelines.h = true;
+        // Check vertical snaps
+        const yChecks = [
+            { point: top, refs: snapTargetsY },
+            { point: centerY, refs: snapTargetsY },
+            { point: bottom, refs: snapTargetsY },
+        ];
+        for (const check of yChecks) {
+            for (const target of check.refs) {
+                if (Math.abs(check.point - target.y) < SNAP_DIST) {
+                    const dy = target.y - check.point;
+                    obj.top = (obj.top || 0) + dy;
+                    obj.setCoords();
+                    guidelines.push({ v: -1, h: target.y });
+                    snapY = target.y;
+                    break;
+                }
+            }
+            if (snapY !== null) break;
         }
     });
 
     canvas.on('after:render', () => {
-        if (!guidelines.v && !guidelines.h) return;
-        
+        if (guidelines.length === 0) return;
         const ctx = canvas.getContext();
         ctx.save();
-        ctx.strokeStyle = '#ff0077';
+        ctx.strokeStyle = 'var(--primary)';
         ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
 
-        if (guidelines.v) {
-            ctx.beginPath();
-            ctx.moveTo(canvas.width! / 2, 0);
-            ctx.lineTo(canvas.width! / 2, canvas.height!);
-            ctx.stroke();
+        for (const g of guidelines) {
+            if (g.v >= 0) {
+                ctx.beginPath();
+                ctx.moveTo(g.v, 0);
+                ctx.lineTo(g.v, canvas.height!);
+                ctx.stroke();
+            }
+            if (g.h >= 0) {
+                ctx.beginPath();
+                ctx.moveTo(0, g.h);
+                ctx.lineTo(canvas.width!, g.h);
+                ctx.stroke();
+            }
         }
-
-        if (guidelines.h) {
-             ctx.beginPath();
-             ctx.moveTo(0, canvas.height! / 2);
-             ctx.lineTo(canvas.width!, canvas.height! / 2);
-             ctx.stroke();
-        }
-        
         ctx.restore();
     });
 
     canvas.on('mouse:up', () => {
-         guidelines = { v: false, h: false };
+         guidelines = [];
          canvas.requestRenderAll();
     });
     
@@ -434,6 +502,54 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
   }, [canvas]);
 
 
+  const alignSelected = (direction: 'left' | 'center-h' | 'right' | 'center-v') => {
+      if (!canvas) return;
+      const active = canvas.getActiveObject();
+      if (!active) return;
+
+      const canvasWidth = canvas.width!;
+      const canvasHeight = canvas.height!;
+      const objBounds = active.getBoundingRect();
+
+      switch (direction) {
+          case 'left':
+              active.set('left', String(active.originX) === 'center' ? objBounds.width / 2 : 0);
+              break;
+          case 'center-h':
+              active.setPositionByOrigin(new fabric.Point(canvasWidth / 2, objBounds.top + objBounds.height / 2), 'center', 'center');
+              break;
+          case 'right':
+              active.set('left', canvasWidth - (String(active.originX) === 'center' ? objBounds.width / 2 : objBounds.width));
+              break;
+          case 'center-v':
+              active.setPositionByOrigin(new fabric.Point(objBounds.left + objBounds.width / 2, canvasHeight / 2), 'center', 'center');
+              break;
+      }
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+  };
+
+  const distributeSelected = () => {
+      if (!canvas) return;
+      const activeObjects = canvas.getActiveObjects();
+      if (activeObjects.length < 3) return;
+
+      // Sort by left position
+      const sorted = [...activeObjects].sort((a, b) => (a.left || 0) - (b.left || 0));
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const totalSpace = (last.left || 0) - (first.left || 0);
+      const gap = totalSpace / (sorted.length - 1);
+
+      sorted.forEach((obj, i) => {
+          obj.set('left', (first.left || 0) + gap * i);
+          obj.setCoords();
+      });
+      canvas.requestRenderAll();
+      saveHistory();
+  };
+
   const downloadCanvas = () => {
       if (!canvas) return;
       
@@ -460,7 +576,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
   return (
     <div className={styles.container}>
       {/* LEFT SIDEBAR */}
-      <div className={styles.sidebar}>
+      {!focusMode && <div className={styles.sidebar}>
          <div className={styles.sidebarHeader} style={{justifyContent:'space-between'}}>
             <div style={{display:'flex', gap:8, alignItems:'center'}}>
                 <ImageIcon size={16} />
@@ -507,17 +623,63 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                         onChange={(e) => resizeCanvas(Number(e.target.value), canvasHeight)} 
                      />
                      <span style={{color:'var(--text-subtle)', fontSize:12}}>x</span>
-                     <input 
-                        className={styles.input} 
-                        type="number" 
-                        value={canvasHeight}
-                        style={{width:'100%', background:'var(--bg-card)', border:'1px solid var(--border-active)', color:'var(--text-main)', padding:'4px', borderRadius:4, fontSize:12}}
-                        onChange={(e) => resizeCanvas(canvasWidth, Number(e.target.value))} 
-                     />
-             </div>
-         </div>
+              <input 
+                         className={styles.input} 
+                         type="number" 
+                         value={canvasHeight}
+                         style={{width:'100%', background:'var(--bg-card)', border:'1px solid var(--border-active)', color:'var(--text-main)', padding:'4px', borderRadius:4, fontSize:12}}
+                         onChange={(e) => resizeCanvas(canvasWidth, Number(e.target.value))} 
+                      />
+              </div>
 
-         <div className={styles.assetList}>
+              {/* Template Presets */}
+              <div style={{marginTop: 10}}>
+                  <button
+                      onClick={() => setShowTemplates(!showTemplates)}
+                      style={{
+                          width:'100%', background:'transparent', border:'1px solid var(--border-subtle)',
+                          color:'var(--text-muted)', padding:'6px 8px', borderRadius:6,
+                          cursor:'pointer', fontFamily:'inherit', fontSize:11,
+                          display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                          transition:'all 0.15s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                  >
+                      <LayoutTemplate size={14} />
+                      {showTemplates ? 'Ocultar plantillas' : 'Plantillas E-commerce'}
+                  </button>
+                  
+                  {showTemplates && (
+                      <div style={{marginTop: 8, display:'flex', flexDirection:'column', gap: 4}}>
+                          {TEMPLATES.map((t, i) => (
+                              <button
+                                  key={i}
+                                  onClick={() => {
+                                      resizeCanvas(t.width, t.height);
+                                      setBgColor(t.bg);
+                                      setShowTemplates(false);
+                                  }}
+                                  style={{
+                                      display:'flex', alignItems:'center', justifyContent:'space-between',
+                                      padding:'6px 8px', borderRadius:6,
+                                      background:'transparent', border:'1px solid var(--border-subtle)',
+                                      color:'var(--text-muted)', cursor:'pointer', fontFamily:'inherit',
+                                      fontSize:11, transition:'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--text-main)'; e.currentTarget.style.background = 'var(--bg-card)'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+                              >
+                                  <span style={{fontWeight: 600}}>{t.name}</span>
+                                  <span style={{fontSize: 10, opacity: 0.6}}>{t.width}×{t.height}</span>
+                              </button>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          </div>
+
+          <div className={styles.assetList}>
             {(assets.length === 0 && customAssets.length === 0) && <p style={{color:'var(--text-dim)', fontSize:'12px', padding:'10px', textAlign:'center'}}>Sin Activos</p>}
             
             {/* Standard Assets */}
@@ -574,7 +736,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                </div>
             ))}
          </div>
-      </div>
+      </div>}
 
       {/* CENTER CANVAS */}
       <div 
@@ -610,6 +772,24 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
             <div className={styles.dividerVertical}></div>
             <button className={styles.toolBtn} onClick={() => fileInputRef.current?.click()} title="Subir Imagen">
                 <Upload size={20} />
+            </button>
+            <div className={styles.dividerVertical}></div>
+            {/* Alignment Tools */}
+            <button className={styles.toolBtn} onClick={() => alignSelected('left')} title="Alinear izquierda" disabled={!selectedObject}>
+                <AlignLeft size={18} />
+            </button>
+            <button className={styles.toolBtn} onClick={() => alignSelected('center-h')} title="Alinear centro horizontal" disabled={!selectedObject}>
+                <AlignHorizontalJustifyCenter size={18} />
+            </button>
+            <button className={styles.toolBtn} onClick={() => alignSelected('right')} title="Alinear derecha" disabled={!selectedObject}>
+                <AlignRight size={18} />
+            </button>
+            <button className={styles.toolBtn} onClick={() => alignSelected('center-v')} title="Alinear centro vertical" disabled={!selectedObject}>
+                <AlignVerticalJustifyCenter size={18} />
+            </button>
+            <div className={styles.dividerVertical}></div>
+            <button className={styles.toolBtn} onClick={distributeSelected} title="Distribuir uniformemente" disabled={!selectedObject}>
+                <LayoutTemplate size={18} />
             </button>
          </div>
          
@@ -657,7 +837,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
       </div>
 
       {/* RIGHT PANEL - PROPERTIES & LAYERS */}
-      <div className={styles.propertiesPanel}>
+      {!focusMode && <div className={styles.propertiesPanel}>
           <div className={styles.tabs}>
               <button 
                   className={`${styles.tab} ${activeTab === 'properties' ? styles.active : ''}`}
@@ -839,6 +1019,55 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
                                         />
                                     </div>
 
+                                    {/* Saturation */}
+                                    <div style={{marginBottom:8}}>
+                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--text-muted)', marginBottom:4}}>
+                                            <span>Saturación</span>
+                                            <span>{((selectedObject.filters?.find(f => f.type === 'Saturation') as any)?.saturation || 0).toFixed(2)}</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="-1" max="1" step="0.05"
+                                            value={(selectedObject.filters?.find(f => f.type === 'Saturation') as any)?.saturation || 0}
+                                            onChange={(e) => {
+                                                const val = parseFloat(e.target.value);
+                                                const idx = selectedObject.filters?.findIndex(f => f.type === 'Saturation');
+                                                if (idx !== undefined && idx > -1) {
+                                                    (selectedObject.filters![idx] as any).saturation = val;
+                                                } else {
+                                                    selectedObject.filters?.push(new (fabric.filters as any).Saturation({ saturation: val }));
+                                                }
+                                                selectedObject.applyFilters();
+                                                canvas?.requestRenderAll();
+                                                forceUpdate(n => n + 1);
+                                            }}
+                                            style={{width:'100%'}}
+                                        />
+                                    </div>
+
+                                    <div className={styles.divider}></div>
+                                    
+                                    {/* Blend Mode */}
+                                    <div style={{marginBottom: 12}}>
+                                        <div className={styles.controlLabel} style={{marginBottom: 6}}>Modo Mezcla</div>
+                                        <select 
+                                            value={(selectedObject as any).blendMode || 'normal'}
+                                            onChange={(e) => {
+                                                selectedObject.set('blendMode' as any, e.target.value);
+                                                canvas?.requestRenderAll();
+                                                forceUpdate(n => n + 1);
+                                            }}
+                                            style={{
+                                                width:'100%', background:'var(--bg-card)', color:'var(--text-main)',
+                                                border:'1px solid var(--border-active)', padding:'6px 8px',
+                                                borderRadius:6, fontSize:12, cursor:'pointer', fontFamily:'inherit',
+                                            }}
+                                        >
+                                            {BLEND_MODES.map(mode => (
+                                                <option key={mode} value={mode}>{mode.charAt(0).toUpperCase() + mode.slice(1)}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    
                                     <div className={styles.divider}></div>
                                     
                                     {/* Shadow Toggle */}
@@ -994,7 +1223,7 @@ export default function DesignStudio({ assets = [], onBack, exportFormat, qualit
               </div>
 
           </div>
-      </div>
+      </div>}
     </div>
   );
 }

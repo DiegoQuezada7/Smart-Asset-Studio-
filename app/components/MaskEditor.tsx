@@ -137,6 +137,24 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
             return;
         }
 
+        // Brush size: [ = decrease, ] = increase
+        if (e.key === '[') {
+            e.preventDefault();
+            setBrushSize(prev => Math.max(5, prev - 5));
+            return;
+        }
+        if (e.key === ']') {
+            e.preventDefault();
+            setBrushSize(prev => Math.min(100, prev + 5));
+            return;
+        }
+
+        // Tool shortcuts
+        if (e.key === 'e' || e.key === 'E') setTool('erase');
+        if (e.key === 'r' || e.key === 'R') setTool('restore');
+        if (e.key === 'c' || e.key === 'C') setTool('clone');
+        if (e.key === 'b' || e.key === 'B') setTool('blur');
+
         // Tools
         setTool(currentTool => {
             if (e.code === 'Space' && currentTool !== 'pan') {
@@ -381,16 +399,16 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
     <div className={styles.overlay} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
       <div className={styles.toolbar}>
          <div className={styles.tools}>
-            <button className={`${styles.toolBtn} ${tool === 'erase' ? styles.active : ''}`} onClick={() => setTool('erase')}>
+            <button className={`${styles.toolBtn} ${tool === 'erase' ? styles.active : ''}`} onClick={() => setTool('erase')} title="Borrar (E)">
                <Eraser size={18} /> Borrar
             </button>
-            <button className={`${styles.toolBtn} ${tool === 'restore' ? styles.active : ''}`} onClick={() => setTool('restore')}>
+            <button className={`${styles.toolBtn} ${tool === 'restore' ? styles.active : ''}`} onClick={() => setTool('restore')} title="Restaurar (R)">
                <PenTool size={18} /> Restaurar
             </button>
-            <button className={`${styles.toolBtn} ${tool === 'clone' ? styles.active : ''}`} onClick={() => setTool('clone')} title="Ctrl+Click para fijar origen">
+            <button className={`${styles.toolBtn} ${tool === 'clone' ? styles.active : ''}`} onClick={() => setTool('clone')} title="Tampón (C) - Ctrl+Click para fijar origen">
                <Stamp size={18} /> Tampón
             </button>
-            <button className={`${styles.toolBtn} ${tool === 'blur' ? styles.active : ''}`} onClick={() => setTool('blur')} title="Suavizar / Difuminar">
+            <button className={`${styles.toolBtn} ${tool === 'blur' ? styles.active : ''}`} onClick={() => setTool('blur')} title="Suavizar (B)">
                <Droplet size={18} /> Suavizar
             </button>
             <div className={styles.divider}></div>
@@ -456,8 +474,30 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
              <button onClick={() => { setScale(1); setPan({x:0, y:0}); }} style={{background: 'transparent', border:'none', color:'var(--text-muted)', fontSize:10, marginLeft:5}}>RESET VISTA</button>
           </div>
 
-           <div style={{position:'absolute', bottom: 20, left: '50%', transform:'translateX(-50%)', color:'var(--text-dim)', fontSize:12, pointerEvents:'none'}}>
-             Espacio + Arrastrar para mover | Tampón: Ctrl+Clic
+           {/* PIP Preview - original image reference */}
+           {imgOriginal && (
+               <div style={{
+                   position:'absolute', bottom: 20, right: 20,
+                   width: 120, height: 120, borderRadius: 8,
+                   border: '2px solid var(--border-active)',
+                   overflow: 'hidden', opacity: 0.6,
+                   pointerEvents: 'none',
+                   boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+               }}>
+                   <img src={originalUrl} alt="" style={{width:'100%', height:'100%', objectFit:'contain'}} />
+                   <div style={{
+                       position:'absolute', bottom: 0, left: 0, right: 0,
+                       background: 'rgba(0,0,0,0.7)',
+                       fontSize: 8, color: 'var(--text-dim)',
+                       textAlign: 'center', padding: '2px',
+                   }}>
+                       Original
+                   </div>
+               </div>
+           )}
+
+           <div style={{position:'absolute', bottom: 20, left: '50%', transform:'translateX(-50%)', color:'var(--text-dim)', fontSize:12, pointerEvents:'none', textAlign:'center'}}>
+             Espacio + Arrastrar para mover | Tampón: Ctrl+Clic | [ ] Tamaño pincel
           </div>
       </div>
     </div>

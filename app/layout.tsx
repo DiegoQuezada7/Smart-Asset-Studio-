@@ -3,7 +3,6 @@ import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ToastProvider } from "./contexts/ToastContext";
-import ToastContainer from "./components/ToastContainer";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -40,7 +39,6 @@ export default function RootLayout({
         <ErrorBoundary>
           <ToastProvider>
             {children}
-            <ToastContainer />
           </ToastProvider>
         </ErrorBoundary>
         <script

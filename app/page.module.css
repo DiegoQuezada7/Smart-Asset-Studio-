@@ -1115,3 +1115,611 @@ input:checked + .slider:before {
     font-size: 0.75rem;
   }
 }
+
+/* ============================================
+   NEW STYLES: Dashboard, Enhanced Cards, etc.
+   ============================================ */
+
+/* Dashboard */
+.dashboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1200px;
+  animation: slide-up 0.4s var(--ease-out-expo) both;
+}
+
+.dashboardMain {
+  grid-column: 1 / -1;
+}
+
+.dashHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.dashTitle {
+  font-family: var(--font-heading);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.dashSubtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-top: 0.5rem;
+}
+
+.dashQuickActions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.dashQuickBtn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.25rem;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.dashQuickBtn:hover {
+  border-color: var(--primary);
+  background: var(--primary-dim);
+  color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px var(--primary-glow);
+}
+
+/* Stats Grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.statCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.statCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary), var(--accent-gold));
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.statCard:hover::before {
+  opacity: 1;
+}
+
+.statCard:hover {
+  border-color: var(--border-active);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.statIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--primary-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  margin-bottom: 1rem;
+}
+
+.statNumber {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+/* Recent Images Carousel */
+.recentSection {
+  grid-column: 1 / -1;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.sectionTitle {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.sectionAction {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.sectionAction:hover {
+  background: var(--primary-dim);
+}
+
+.recentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.recentCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  aspect-ratio: 1;
+  position: relative;
+}
+
+.recentCard:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-glow);
+}
+
+.recentCard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recentCardOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 8px;
+}
+
+.recentCard:hover .recentCardOverlay {
+  opacity: 1;
+}
+
+.recentCardName {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-main);
+}
+
+/* Enhanced Card hover effect */
+.cardLiftGlow {
+  position: relative;
+  transition: all 0.3s var(--ease-out-expo);
+}
+
+.cardLiftGlow::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--primary), var(--accent-gold), var(--primary));
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.3s;
+  background-size: 200% 200%;
+  animation: lava-lamp 3s ease infinite;
+}
+
+.cardLiftGlow:hover::after {
+  opacity: 0.5;
+}
+
+.cardLiftGlow:hover {
+  transform: translateY(-3px) scale(1.015);
+  box-shadow: 0 12px 40px rgba(201, 96, 60, 0.15);
+}
+
+/* Quick action buttons on hover reveal */
+.cardActionsReveal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.4);
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 10;
+  backdrop-filter: blur(2px);
+}
+
+.card:hover .cardActionsReveal {
+  opacity: 1;
+}
+
+.cardActionBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  backdrop-filter: blur(4px);
+}
+
+.cardActionBtn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.1);
+}
+
+.cardActionBtn.danger:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Lava lamp progress bar */
+.progressBarLava {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--accent-gold), var(--primary), var(--accent-gold));
+  background-size: 300% 100%;
+  animation: lava-lamp 4s ease infinite;
+  box-shadow: 0 0 8px var(--primary-glow);
+  transition: width 0.4s ease;
+  border-radius: 0 3px 3px 0;
+}
+
+/* Processing indicator per card */
+.processingOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 5;
+  backdrop-filter: blur(2px);
+}
+
+.processingStep {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.processingSpinner {
+  animation: spin 1s linear infinite;
+  color: var(--primary);
+}
+
+/* Timeline Processing View */
+.timelineContainer {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.timelineEntry {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+  animation: slide-up 0.3s ease both;
+}
+
+.timelineEntry:last-child {
+  border-bottom: none;
+}
+
+.timelineVisual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 48px;
+}
+
+.timelineThumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+}
+
+.timelineArrow {
+  color: var(--primary);
+  opacity: 0.5;
+}
+
+.timelineInfo {
+  flex: 1;
+}
+
+.timelineTitle {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.timelineMeta {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.timelineDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.timelineDot.processing {
+  background: var(--primary);
+  animation: pulse 1.5s ease infinite;
+}
+
+.timelineDot.error {
+  background: var(--danger);
+}
+
+/* Presentation Mode Overlay */
+.presentationOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.presentationImg {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  animation: scale-in 0.4s var(--ease-out-expo);
+}
+
+.presentationControls {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  background: rgba(0,0,0,0.7);
+  padding: 0.75rem 1.5rem;
+  border-radius: 50px;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.presentationBtn {
+  background: transparent;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.15s;
+  display: flex;
+  opacity: 0.7;
+}
+
+.presentationBtn:hover {
+  background: rgba(255,255,255,0.1);
+  opacity: 1;
+}
+
+.presentationBtn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.presentationCounter {
+  color: white;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 60px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.presentationInfo {
+  position: fixed;
+  top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 0.9rem;
+  opacity: 0.5;
+  text-align: center;
+}
+
+/* Focus Mode Toggle */
+.focusToggle {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 100;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(8px);
+}
+
+.focusToggle:hover {
+  background: var(--bg-active);
+  color: var(--text-main);
+  border-color: var(--border-active);
+}
+
+.focusToggleActive {
+  background: var(--primary-dim);
+  color: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 12px var(--primary-glow);
+}
+
+/* Sidebar collapsed when in focus mode */
+.sidebarCollapsed {
+  width: 56px !important;
+  padding: 1rem 0.75rem !important;
+}
+
+.sidebarCollapsed .logo span {
+  display: none;
+}
+
+.sidebarCollapsed .navItem span {
+  display: none;
+}
+
+.sidebarCollapsed .userProfile {
+  display: none;
+}
+
+.sidebarCollapsed .navItem {
+  justify-content: center;
+  padding: 0.65rem;
+}
+
+/* Color Palette extracted */
+.paletteContainer {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.paletteSwatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.paletteSwatch:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 12px rgba(255,255,255,0.1);
+}
+
+/* Export Preset badge */
+.presetBadge {
+  background: var(--primary-dim);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Searchable gallery */
+.searchInput {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  padding: 6px 12px 6px 32px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  width: 180px;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.searchInput:focus {
+  border-color: var(--primary);
+  width: 220px;
+  box-shadow: 0 0 0 3px var(--primary-dim);
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  pointer-events: none;
+}
