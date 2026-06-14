@@ -1,7 +1,7 @@
 "use client";
 
 import { useDropzone } from "react-dropzone";
-import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette } from "lucide-react";
+import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette, Settings, Layers } from "lucide-react";
 import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import styles from "./page.module.css";
@@ -16,12 +16,60 @@ interface FileWithPreview extends File {
   preview: string;
 }
 
+function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000,
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.15 }}
+        style={{
+          background: '#18181b', border: '1px solid #3f3f46', borderRadius: 16,
+          padding: '2rem', maxWidth: 400, width: '90%', display: 'flex', flexDirection: 'column', gap: '1.5rem',
+        }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Confirmación"
+      >
+        <p style={{ color: '#fff', fontSize: '0.95rem', lineHeight: 1.6 }}>{message}</p>
+        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{ background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem' }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#ef4444', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600 }}
+          >
+            Confirmar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function Home() {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const { results, isProcessing, processImages, processBatch, clearHistory, updateResultBlob, deleteAsset, renameFile, renameBatch } = useImageProcessor();
   const [viewMode, setViewMode] = useState<'upload' | 'results' | 'settings' | 'studio'>('upload');
   const [showSeoMenu, setShowSeoMenu] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // Settings State (Persistent)
   const [seoPrefix, setSeoPrefix] = useLocalStorage('seo_prefix', '');
@@ -63,40 +111,46 @@ export default function Home() {
 
   const hasResults = Object.keys(results).length > 0;
 
+  const completedCount = Object.values(results).filter(r => r.status === 'completed').length;
+  const totalCount = Object.keys(results).length;
+  const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
   return (
     <div className={styles.container}>
       {/* Sidebar Navigation */}
       <aside className={styles.sidebar}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}></div>
+          <div className={styles.logoIcon}>
+            <Layers size={14} color="#fff" aria-hidden="true" />
+          </div>
           <span>SmartAsset</span>
         </div>
 
         <nav className={styles.nav}>
-          <button 
+          <button
             className={`${styles.navItem} ${viewMode === 'upload' ? styles.active : ''}`}
             onClick={() => setViewMode('upload')}
           >
-            Mesa de Trabajo
+            <Upload size={16} /> Mesa de Trabajo
           </button>
-          <button 
+          <button
              className={`${styles.navItem} ${viewMode === 'results' ? styles.active : ''}`}
              onClick={() => hasResults && setViewMode('results')}
              disabled={!hasResults}
           >
-            Resultados {hasResults && <span className={styles.badge}>•</span>}
+            <ImageIcon size={16} /> Resultados {hasResults && <span className={styles.badge}>{Object.keys(results).length}</span>}
           </button>
-          <button 
+          <button
              className={`${styles.navItem} ${viewMode === 'studio' ? styles.active : ''}`}
              onClick={() => setViewMode('studio')}
           >
-             <Palette size={16} style={{marginRight:8}} /> Design Studio
+             <Palette size={16} /> Design Studio
           </button>
-          <button 
+          <button
             className={`${styles.navItem} ${viewMode === 'settings' ? styles.active : ''}`}
             onClick={() => setViewMode('settings')}
           >
-            Ajustes
+            <Settings size={16} /> Ajustes
           </button>
         </nav>
 
@@ -124,30 +178,35 @@ export default function Home() {
             
              <AnimatePresence>
                 {viewMode === 'upload' && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className={styles.actions}
                   >
                    <div className={styles.upscaleToggleWrapper}>
-                       <label className={styles.toggleSwitch}>
-                          <input 
-                            type="checkbox" 
-                            checked={shouldUpscale} 
-                            onChange={(e) => setShouldUpscale(e.target.checked)} 
+                       <label className={styles.toggleSwitch} htmlFor="upscale-toggle">
+                          <input
+                            id="upscale-toggle"
+                            type="checkbox"
+                            checked={shouldUpscale}
+                            onChange={(e) => setShouldUpscale(e.target.checked)}
+                            aria-label="Activar Upscale IA 2x"
                           />
                           <span className={styles.slider}></span>
                        </label>
-                       <span className={styles.toggleLabel}>Upscale IA 2x (Lento)</span>
+                       <label htmlFor="upscale-toggle" className={styles.toggleLabel}>Upscale IA 2x (Lento)</label>
                   </div>
                     <div className={styles.divider}></div>
                     <div className={styles.stats}>
-                      <span>{files.length} Archivos</span>
+                      {isProcessing
+                        ? <span>{completedCount}/{totalCount} procesados</span>
+                        : <span>{files.length} Archivos</span>
+                      }
                     </div>
-                    <button 
-                      className="btn-primary" 
+                    <button
+                      className="btn-primary"
                       onClick={handleProcess}
-                      disabled={isProcessing}
+                      disabled={isProcessing || files.length === 0}
                     >
                       {isProcessing ? (
                         <span className={styles.btnContent}><Loader2 className={styles.spin} size={18}/> Procesando...</span>
@@ -184,10 +243,10 @@ export default function Home() {
                               }}
                               autoFocus
                             />
-                            <button className={styles.iconBtn} onClick={() => { renameBatch(seoPrefix); setShowSeoMenu(false); }}>
+                            <button className={styles.iconBtn} onClick={() => { renameBatch(seoPrefix); setShowSeoMenu(false); }} aria-label="Aplicar renombrado SEO">
                               <Sparkles size={14} />
                             </button>
-                            <button className={styles.iconBtn} onClick={() => setShowSeoMenu(false)}>
+                            <button className={styles.iconBtn} onClick={() => setShowSeoMenu(false)} aria-label="Cancelar renombrado SEO">
                               <X size={14}/>
                             </button>
                         </motion.div>
@@ -207,14 +266,46 @@ export default function Home() {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+            {isProcessing && (
+              <div
+                className={styles.progressBar}
+                style={{ width: `${progressPct}%` }}
+                role="progressbar"
+                aria-valuenow={progressPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Progreso: ${completedCount} de ${totalCount}`}
+              />
+            )}
             </header>
 
             {/* Content Area */}
             <div className={styles.scrollArea}>
-              
+
+              {/* STUDIO VIEW — always mounted to preserve Fabric.js canvas state */}
+              <div style={{display: viewMode === 'studio' ? 'block' : 'none', height: '100%'}}>
+                  <DesignStudio
+                      assets={Object.values(results).filter(r => r.status === 'completed')}
+                      exportFormat={exportFormat}
+                      quality={quality / 100}
+                      onDeleteAsset={deleteAsset}
+                  />
+              </div>
+
+              {/* ANIMATED VIEWS */}
+              <AnimatePresence mode="wait">
+
               {/* UPLOAD VIEW */}
               {viewMode === 'upload' && (
-                <>
+                <motion.div
+                  key="upload"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18 }}
+                  style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
+                >
                   {files.length > 0 && (
                     <div className={styles.gallery}>
                       <AnimatePresence>
@@ -236,18 +327,19 @@ export default function Home() {
                                     className={styles.cardImage}
                                   />
                                   {!isProcessing && (
-                                    <button 
+                                    <button
                                       onClick={() => removeFile(file.name)}
                                       className={styles.removeBtn}
+                                      aria-label={`Eliminar ${file.name}`}
                                     >
                                       <X size={14} />
                                     </button>
                                   )}
-                                  
+
                                   {/* Status Overlay */}
                                   {status === 'completed' && (
-                                    <div className={styles.statusOverlaySuccess}>
-                                      <Sparkles size={16} />
+                                    <div className={styles.statusOverlaySuccess} aria-label="Completado" role="status">
+                                      <Sparkles size={16} aria-hidden="true" />
                                     </div>
                                   )}
                               </div>
@@ -258,8 +350,8 @@ export default function Home() {
                             </motion.div>
                           );
                         })}
-                        
-                        <div 
+
+                        <div
                             className={`${styles.card} ${styles.miniDrop}`}
                             {...getRootProps()}
                         >
@@ -286,123 +378,128 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                </>
+                </motion.div>
               )}
 
               {/* RESULTS VIEW */}
               {viewMode === 'results' && (
-                <div className={styles.gallery}>
-                  {Object.entries(results).map(([id, res]) => (
-                      <div key={id} className={styles.card}>
-                        <div className={styles.compareContainer}>
-                            {/* Clean Image */}
-                            {res.status === 'completed' ? (
-                              <div className={styles.resultImageWrapper}>
-                                <div className={styles.checkerboard}></div>
-                                <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}>
-                                    <CompareSlider before={res.originalUrl} after={res.processedUrl} />
+                <motion.div
+                  key="results"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <div className={styles.gallery}>
+                    {Object.entries(results).map(([id, res]) => (
+                        <div key={id} className={styles.card}>
+                          <div className={styles.compareContainer}>
+                              {res.status === 'completed' ? (
+                                <div className={styles.resultImageWrapper}>
+                                  <div className={styles.checkerboard}></div>
+                                  <div className={styles.compareSliderOverlay}>
+                                      <CompareSlider before={res.originalUrl} after={res.processedUrl} />
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <div className={styles.loadingWrapper}>
-                                <Loader2 className={styles.spin} />
-                              </div>
-                            )}
-                        </div>
-                        <div className={styles.cardInfo}>
-                            <div className={styles.inputGroup}>
-                              <input 
-                                  className={styles.fileNameInput} 
-                                  value={res.fileName} 
-                                  onChange={(e) => renameFile(res.id, e.target.value)}
-                              />
-                              <Pencil size={12} className={styles.editIcon} />
-                            </div>
-                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'4px'}}>
-                              <span className={styles.tag}>Fondo Eliminado</span>
-                              {res.status === 'completed' && (
-                                <button 
-                                    className={styles.miniBtn} 
-                                    onClick={() => setEditingAssetId(id)}
-                                    title="Refinar Recorte"
-                                    style={{display:'flex', alignItems:'center', gap:'4px', background:'rgba(255,255,255,0.1)', border:'none', color:'white', padding:'4px 8px', borderRadius:'4px', cursor:'pointer', fontSize:'0.8rem'}}
-                                >
-                                    <Scissors size={12} /> Refinar
-                                </button>
+                              ) : (
+                                <div className={styles.loadingWrapper}>
+                                  <Loader2 className={styles.spin} />
+                                </div>
                               )}
-                            </div>
+                          </div>
+                          <div className={styles.cardInfo}>
+                              <div className={styles.inputGroup}>
+                                <input
+                                    className={styles.fileNameInput}
+                                    value={res.fileName}
+                                    onChange={(e) => renameFile(res.id, e.target.value)}
+                                    aria-label="Nombre de archivo"
+                                />
+                                <Pencil size={12} className={styles.editIcon} aria-hidden="true" />
+                              </div>
+                              <div className={styles.cardInfoRow}>
+                                <span className={styles.tag}>Fondo Eliminado</span>
+                                {res.status === 'completed' && (
+                                  <button
+                                      className={styles.miniBtn}
+                                      onClick={() => setEditingAssetId(id)}
+                                      aria-label="Refinar recorte"
+                                  >
+                                      <Scissors size={12} aria-hidden="true" /> Refinar
+                                  </button>
+                                )}
+                              </div>
+                          </div>
                         </div>
-                      </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </motion.div>
               )}
-        
-              {/* STUDIO VIEW (Persistent) */}
-              <div style={{display: viewMode === 'studio' ? 'block' : 'none', height: '100%'}}>
-                  <DesignStudio 
-                      assets={Object.values(results).filter(r => r.status === 'completed')}
-                      exportFormat={exportFormat}
-                      quality={quality / 100}
-                      onDeleteAsset={deleteAsset}
-                  />
-              </div>
 
               {/* SETTINGS VIEW */}
               {viewMode === 'settings' && (
-                <div className={styles.settingsContainer}>
-                    <div className={styles.settingGroup}>
-                      <h3>Formato de Exportación</h3>
-                      <div className={styles.formatOptions}>
-                          {['png', 'webp', 'jpeg'].map((fmt) => (
-                            <button 
-                              key={fmt}
-                              className={`${styles.optionBtn} ${exportFormat === fmt ? styles.activeOption : ''}`}
-                              onClick={() => setExportFormat(fmt as any)}
-                            >
-                              {fmt.toUpperCase()}
-                            </button>
-                          ))}
+                <motion.div
+                  key="settings"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <div className={styles.settingsContainer}>
+                      <div className={styles.settingGroup}>
+                        <h3>Formato de Exportación</h3>
+                        <div className={styles.formatOptions}>
+                            {['png', 'webp', 'jpeg'].map((fmt) => (
+                              <button
+                                key={fmt}
+                                className={`${styles.optionBtn} ${exportFormat === fmt ? styles.activeOption : ''}`}
+                                onClick={() => setExportFormat(fmt as any)}
+                              >
+                                {fmt.toUpperCase()}
+                              </button>
+                            ))}
+                        </div>
+                        <p className={styles.settingHint}>
+                            {exportFormat === 'png' && 'Máxima calidad, fondo transparente. Ideal para archivo.'}
+                            {exportFormat === 'webp' && 'Moderno, ultra ligero. Ideal para tiendas online (Shopify, etc).'}
+                            {exportFormat === 'jpeg' && 'Clásico. Fondo blanco (sin transparencia). Menor peso.'}
+                        </p>
                       </div>
-                      <p className={styles.settingHint}>
-                          {exportFormat === 'png' && 'Máxima calidad, fondo transparente. Ideal para archivo.'}
-                          {exportFormat === 'webp' && 'Moderno, ultra ligero. Ideal para tiendas online (Shopify, etc).'}
-                          {exportFormat === 'jpeg' && 'Clásico. Fondo blanco (sin transparencia). Menor peso.'}
-                      </p>
-                    </div>
 
-                    <div className={styles.settingGroup}>
-                      <h3>Calidad de Compresión ({quality}%)</h3>
-                      <input 
-                          type="range" 
-                          min="10" 
-                          max="100" 
-                          value={quality} 
-                          onChange={(e) => setQuality(Number(e.target.value))}
-                          className={styles.rangeSlider}
-                      />
-                      <p className={styles.settingHint}>Reducir calidad ahorra mucho espacio con poca pérdida visual.</p>
-                    </div>
+                      <div className={styles.settingGroup}>
+                        <h3>Calidad de Compresión ({quality}%)</h3>
+                        <input
+                            type="range"
+                            min="10"
+                            max="100"
+                            value={quality}
+                            onChange={(e) => setQuality(Number(e.target.value))}
+                            className={styles.rangeSlider}
+                            aria-label={`Calidad de compresión: ${quality}%`}
+                            style={{
+                              background: `linear-gradient(to right, var(--primary) ${quality}%, var(--border-subtle) ${quality}%)`
+                            }}
+                        />
+                        <p className={styles.settingHint}>Reducir calidad ahorra mucho espacio con poca pérdida visual.</p>
+                      </div>
 
-                    <div className={styles.settingGroup} style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-                      <h3 style={{ color: '#ef4444' }}>Zona de Peligro</h3>
-                      <p className={styles.settingHint} style={{ marginBottom: '1rem' }}>
-                          Borrar todas las imágenes guardadas en el historial. Esta acción no se puede deshacer.
-                      </p>
-                      <button 
-                          className="btn-primary" 
-                          style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid #ef4444' }}
-                          onClick={() => {
-                              if (confirm('¿Estás seguro de querer borrar todo el historial?')) {
-                                  clearHistory();
-                                  alert('Historial eliminado.');
-                              }
-                          }}
-                      >
-                          <Trash2 size={18} /> Borrar Historial
-                      </button>
-                    </div>
-                </div>
+                      <div className={styles.settingGroupDanger}>
+                        <h3 className={styles.dangerTitle}>Zona de Peligro</h3>
+                        <p className={styles.dangerHint}>
+                            Borrar todas las imágenes guardadas en el historial. Esta acción no se puede deshacer.
+                        </p>
+                        <button
+                            className="btn-danger"
+                            onClick={() => setShowConfirm(true)}
+                        >
+                            <Trash2 size={18} aria-hidden="true" /> Borrar Historial
+                        </button>
+                      </div>
+                  </div>
+                </motion.div>
               )}
+
+              </AnimatePresence>
 
             </div>
       </main>
@@ -410,7 +507,7 @@ export default function Home() {
       {/* MASK EDITOR OVERLAY */}
       <AnimatePresence>
         {editingAssetId && results[editingAssetId] && (
-           <MaskEditor 
+           <MaskEditor
               originalUrl={results[editingAssetId].originalUrl}
               processedUrl={results[editingAssetId].processedUrl}
               initialProcessedUrl={results[editingAssetId].initialProcessedUrl || results[editingAssetId].processedUrl}
@@ -420,6 +517,17 @@ export default function Home() {
               }}
               onCancel={() => setEditingAssetId(null)}
            />
+        )}
+      </AnimatePresence>
+
+      {/* CONFIRM MODAL */}
+      <AnimatePresence>
+        {showConfirm && (
+          <ConfirmModal
+            message="¿Estás seguro de querer borrar todo el historial? Esta acción no se puede deshacer."
+            onConfirm={() => { clearHistory(); setShowConfirm(false); }}
+            onCancel={() => setShowConfirm(false)}
+          />
         )}
       </AnimatePresence>
     </div>

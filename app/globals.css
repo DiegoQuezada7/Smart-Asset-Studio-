@@ -12,7 +12,7 @@
   /* Text Colors */
   --text-main: #ffffff;
   --text-muted: #888888;
-  --text-dim: #444444;
+  --text-dim: #6b7280;
 
   /* Borders */
   --border-subtle: #222222;
@@ -41,7 +41,7 @@ body {
   overflow-x: hidden;
   background-color: var(--bg-app);
   color: var(--text-main);
-  font-family: var(--font-body);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
 }
 
 h1,
@@ -50,7 +50,7 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: var(--font-heading);
+  font-family: var(--font-outfit), system-ui, sans-serif;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -82,6 +82,25 @@ button {
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 16px var(--primary-glow);
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
 }
 
 .text-gradient {

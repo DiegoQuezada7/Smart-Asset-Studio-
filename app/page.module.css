@@ -31,11 +31,15 @@
 }
 
 .logoIcon {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   background: var(--primary);
-  border-radius: 6px;
-  box-shadow: 0 0 10px var(--primary-glow);
+  border-radius: 7px;
+  box-shadow: 0 0 12px var(--primary-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .nav {
@@ -60,6 +64,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .navItem:hover:not(:disabled) {
@@ -119,6 +125,8 @@
   flex-direction: column;
   background: var(--bg-app);
   position: relative;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .header {
@@ -132,11 +140,21 @@
   background: rgba(5, 5, 5, 0.8);
   backdrop-filter: blur(10px);
   z-index: 5;
+  position: relative;
+}
+
+.headerContent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .title {
   font-size: 1.5rem;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .subtitle {
@@ -148,7 +166,8 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
+  flex-shrink: 0;
 }
 
 .options {
@@ -165,6 +184,12 @@
   width: 1px;
   height: 24px;
   background: var(--border-subtle);
+}
+
+.upscaleToggleWrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .toggleSwitch {
@@ -250,6 +275,25 @@ input:checked + .slider:before {
   padding: 2rem;
   display: flex;
   flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-active) transparent;
+}
+
+.scrollArea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollArea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollArea::-webkit-scrollbar-thumb {
+  background: var(--border-active);
+  border-radius: 3px;
+}
+
+.scrollArea::-webkit-scrollbar-thumb:hover {
+  background: #444444;
 }
 
 /* Empty State Wrapper */
@@ -301,6 +345,7 @@ input:checked + .slider:before {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 1.5rem;
   width: 100%;
+  max-width: 1440px;
 }
 
 .card {
@@ -396,14 +441,14 @@ input:checked + .slider:before {
 
 .removeBtn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
   background: rgba(0,0,0,0.6);
   color: white;
   border: none;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -537,13 +582,14 @@ input:checked + .slider:before {
   border: none;
   color: var(--text-main);
   border-radius: 4px;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .iconBtn:hover {
@@ -683,4 +729,78 @@ input:checked + .slider:before {
 
 .rangeSlider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
+}
+
+/* Compare Slider Overlay */
+.compareSliderOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+}
+
+/* Card Info Row */
+.cardInfoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* Mini Button (Refine/Action inside card) */
+.miniBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.miniBtn:hover {
+  background: var(--primary-dim);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Danger Zone Setting Group */
+.settingGroupDanger {
+  background: var(--bg-card);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+}
+
+.dangerTitle {
+  color: #ef4444;
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.dangerHint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+/* Progress Bar (header bottom edge) */
+.progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), #818cf8);
+  box-shadow: 0 0 8px var(--primary-glow);
+  transition: width 0.4s ease;
+  border-radius: 0 3px 3px 0;
 }

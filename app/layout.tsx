@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-// import { Outfit, Inter } from "next/font/google";
+import { Outfit, Inter } from "next/font/google";
 import "./globals.css";
 
-/*
 const outfit = Outfit({
   subsets: ["latin"],
   variable: "--font-outfit",
@@ -14,7 +13,6 @@ const inter = Inter({
   variable: "--font-inter",
   display: "swap",
 });
-*/
 
 export const metadata: Metadata = {
   title: "Smart Asset Studio",
@@ -27,8 +25,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body style={{fontFamily: 'system-ui, -apple-system, sans-serif'}} className="antialiased">
+    <html lang="es" className={`${outfit.variable} ${inter.variable}`}>
+      <body className="antialiased">
         {children}
       </body>
     </html>
