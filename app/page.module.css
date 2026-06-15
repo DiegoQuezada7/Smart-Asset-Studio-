@@ -980,12 +980,18 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.15s;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
   backdrop-filter: blur(4px);
+}
+
+.imgContainerInner:hover .miniIconBtn {
+  opacity: 1;
 }
 
 .miniIconBtn:hover {
   background: var(--primary);
+  opacity: 1;
 }
 
 .miniIconBtn:last-child:hover {

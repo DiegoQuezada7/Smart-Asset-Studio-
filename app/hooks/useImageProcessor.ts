@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { removeBackground, preload } from "@imgly/background-removal";
 import type { Config } from "@imgly/background-removal";
-import { saveAsset, loadAllAssets, clearAssets, deleteAsset as deleteFromDb, updateAssetBlob, renameAsset, AssetRecord } from '../utils/storage';
+import { saveAsset, loadAllAssets, clearAssets, deleteAsset as deleteFromDb, updateAssetBlob, renameAsset } from '../utils/storage';
 
 export interface ProcessedResult {
   id: string;
@@ -14,6 +14,17 @@ export interface ProcessedResult {
   originalSize?: number;
   originalWidth?: number;
   originalHeight?: number;
+  wasUpscaled?: boolean;
+  processedWidth?: number;
+  processedHeight?: number;
+  processingTimeMs?: number;
+}
+
+export interface ProcessingStats {
+  totalProcessed: number;
+  totalErrors: number;
+  avgTimeMs: number;
+  lastTimings: { fileName: string; step: string; ms: number }[];
 }
 
 const BG_CONFIG: Config = {
@@ -21,6 +32,8 @@ const BG_CONFIG: Config = {
   proxyToWorker: true,
   output: { format: 'image/png', quality: 0.92 },
 };
+
+const TIMEOUT_MS = 120_000;
 
 function getImageDimensions(url: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
@@ -31,6 +44,16 @@ function getImageDimensions(url: string): Promise<{ width: number; height: numbe
   });
 }
 
+function timeoutSignal(ms: number, parentSignal?: AbortSignal): { signal: AbortSignal; clear: () => void } {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'TimeoutError')), ms);
+  const clear = () => clearTimeout(timer);
+  if (parentSignal) {
+    parentSignal.addEventListener('abort', () => { clearTimeout(timer); ctrl.abort(); }, { once: true });
+  }
+  return { signal: ctrl.signal, clear };
+}
+
 export function useImageProcessor() {
   const [results, setResults] = useState<Record<string, ProcessedResult>>({});
   const [isProcessing, setIsProcessing] = useState(false);
@@ -39,9 +62,11 @@ export function useImageProcessor() {
   const [modelLoaded, setModelLoaded] = useState(false);
   const [modelProgress, setModelProgress] = useState(0);
   const [processingProgress, setProcessingProgress] = useState<Record<string, string>>({});
+  const [processingStats, setProcessingStats] = useState<ProcessingStats>({ totalProcessed: 0, totalErrors: 0, avgTimeMs: 0, lastTimings: [] });
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const modelPromiseRef = useRef<Promise<void> | null>(null);
+  const pendingIdByFileRef = useRef<Map<string, string>>(new Map());
 
   const preloadModel = useCallback(async () => {
     if (modelLoaded || modelPromiseRef.current) return modelPromiseRef.current;
@@ -116,43 +141,50 @@ export function useImageProcessor() {
     });
   }, []);
 
+  const timingRef = useRef<{ fileName: string; step: string; ms: number }[]>([]);
+
   const processImages = async (files: File[], upscaleEnabled = false) => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     const { signal } = abortRef.current;
 
     setIsProcessing(true);
+    timingRef.current = [];
 
-    const newResults = { ...results };
     const tasks: { id: string; file: File }[] = [];
 
-    files.forEach(file => {
-      const id = crypto.randomUUID();
-      tasks.push({ id, file });
-      const url = trackUrl(URL.createObjectURL(file));
-      newResults[id] = {
-        id,
-        originalUrl: url,
-        processedUrl: '',
-        status: 'processing',
-        fileName: file.name,
-        originalSize: file.size,
-      };
-      // Get dimensions asynchronously
-      getImageDimensions(url).then(dims => {
-        setResults(prev => {
-          if (!prev[id]) return prev;
-          return { ...prev, [id]: { ...prev[id], originalWidth: dims.width, originalHeight: dims.height } };
+    pendingIdByFileRef.current.clear();
+    setResults(prev => {
+      const next = { ...prev };
+      files.forEach(file => {
+        const id = crypto.randomUUID();
+        tasks.push({ id, file });
+        pendingIdByFileRef.current.set(file.name, id);
+        const url = trackUrl(URL.createObjectURL(file));
+        next[id] = {
+          id,
+          originalUrl: url,
+          processedUrl: '',
+          status: 'processing',
+          fileName: file.name,
+          originalSize: file.size,
+        };
+        getImageDimensions(url).then(dims => {
+          setResults(p => {
+            if (!p[id]) return p;
+            return { ...p, [id]: { ...p[id], originalWidth: dims.width, originalHeight: dims.height } };
+          });
         });
       });
+      return next;
     });
-
-    setResults(newResults);
 
     // Preload model if not already loaded
     if (!modelLoaded) {
       setProcessingProgress(prev => ({ ...prev, _model: 'Descargando modelo de IA...' }));
+      const t0 = performance.now();
       await preloadModel();
+      timingRef.current.push({ fileName: '_modelo', step: 'descarga', ms: Math.round(performance.now() - t0) });
       setProcessingProgress(prev => { const n = { ...prev }; delete n._model; return n; });
     }
 
@@ -160,12 +192,15 @@ export function useImageProcessor() {
       if (signal.aborted) break;
       setCurrentProcessingId(task.id);
       setProcessingProgress(prev => ({ ...prev, [task.id]: 'Eliminando fondo...' }));
+      const tStart = performance.now();
 
       try {
-        // Step 1: Background removal with progress
+        // Step 1: Background removal with timeout
+        const tBg0 = performance.now();
+        const bgTimeout = timeoutSignal(TIMEOUT_MS, signal);
         const bgRemovedBlob = await removeBackground(task.file, {
           ...BG_CONFIG,
-          progress: (key, current, total) => {
+          progress: (key: string, current: number, total: number) => {
             if (key === 'compute:inference') {
               setProcessingProgress(prev => ({ ...prev, [task.id]: 'Analizando imagen...' }));
             } else if (key === 'compute:mask') {
@@ -174,16 +209,32 @@ export function useImageProcessor() {
               setProcessingProgress(prev => ({ ...prev, [task.id]: 'Codificando resultado...' }));
             }
           },
+          // @ts-expect-error -- imgly accepts AbortSignal at runtime
+          signal: bgTimeout.signal,
         });
+        bgTimeout.clear();
+        timingRef.current.push({ fileName: task.file.name, step: 'background-removal', ms: Math.round(performance.now() - tBg0) });
 
         if (signal.aborted) break;
 
         let finalBlob = bgRemovedBlob;
+        let wasUpscaled = false;
+        let processedWidth: number | undefined;
+        let processedHeight: number | undefined;
+        const bgRemovedUrl = trackUrl(URL.createObjectURL(bgRemovedBlob));
 
         // Step 2: Upscale if enabled (2x)
         if (upscaleEnabled) {
           setProcessingProgress(prev => ({ ...prev, [task.id]: 'Aplicando upscale...' }));
+          const origDims = Object.values(results).find(r => r.id === task.id);
+          if (origDims?.originalWidth && origDims.originalWidth > 2000) {
+            console.warn(`Upscaling large image (${origDims.originalWidth}px) — this may take several minutes on CPU`);
+          }
+          const tUp0 = performance.now();
           try {
+            const tf = await import('@tensorflow/tfjs');
+            await tf.ready();
+            await tf.setBackend('cpu');
             const { default: Upscaler } = await import('upscaler');
             const upscaler = new Upscaler();
             const inputImg = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -194,7 +245,9 @@ export function useImageProcessor() {
               i.src = URL.createObjectURL(bgRemovedBlob);
             });
             if (signal.aborted) break;
-            const upscaleUrl = await upscaler.upscale(inputImg, { signal });
+            const upTimeout = timeoutSignal(TIMEOUT_MS, signal);
+            const upscaleUrl = await upscaler.upscale(inputImg, { signal: upTimeout.signal });
+            upTimeout.clear();
             if (signal.aborted) break;
             const upscaledDataUrl = typeof upscaleUrl === 'string' ? upscaleUrl : URL.createObjectURL(bgRemovedBlob);
             const upscaledImg = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -206,17 +259,39 @@ export function useImageProcessor() {
             const c = document.createElement('canvas');
             c.width = upscaledImg.width;
             c.height = upscaledImg.height;
-            c.getContext('2d')?.drawImage(upscaledImg, 0, 0);
+            const ctx = c.getContext('2d')!;
+            // Preserve original alpha: draw original BG-removed image scaled up as alpha mask,
+            // then composite upscaled image over it with source-atop
+            ctx.drawImage(inputImg, 0, 0, upscaledImg.width, upscaledImg.height);
+            ctx.globalCompositeOperation = 'source-atop';
+            ctx.drawImage(upscaledImg, 0, 0);
+            ctx.globalCompositeOperation = 'source-over';
+            // Clean up near-transparent pixels to reduce white border artifacts
+            const imgData = ctx.getImageData(0, 0, c.width, c.height);
+            for (let i = 3; i < imgData.data.length; i += 4) {
+              if (imgData.data[i] > 0 && imgData.data[i] < 15) imgData.data[i] = 0;
+              if (imgData.data[i] > 240) imgData.data[i] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
             finalBlob = await new Promise<Blob>(resolve => {
               c.toBlob(b => resolve(b || bgRemovedBlob), 'image/png');
             });
-          } catch (upscaleErr) {
-            console.warn('Upscale failed, using bg-removed result:', upscaleErr);
+            wasUpscaled = true;
+            processedWidth = upscaledImg.width;
+            processedHeight = upscaledImg.height;
+          } catch (upscaleErr: any) {
+            if (upscaleErr?.name === 'TimeoutError') {
+              console.warn(`Upscale timed out for ${task.file.name}`);
+            } else {
+              console.warn('Upscale failed, using bg-removed result:', upscaleErr);
+            }
           }
+          timingRef.current.push({ fileName: task.file.name, step: 'upscale', ms: Math.round(performance.now() - tUp0) });
         }
 
         if (signal.aborted) break;
 
+        const totalMs = Math.round(performance.now() - tStart);
         const originalBlob = task.file;
         const processedBlob = finalBlob;
         const processedUrl = trackUrl(URL.createObjectURL(processedBlob));
@@ -228,22 +303,48 @@ export function useImageProcessor() {
           [task.id]: {
             ...prev[task.id],
             processedUrl,
-            initialProcessedUrl: processedUrl,
+            initialProcessedUrl: upscaleEnabled ? bgRemovedUrl : undefined,
             status: 'completed',
+            wasUpscaled,
+            processedWidth,
+            processedHeight,
+            processingTimeMs: totalMs,
           }
         }));
+
+        setProcessingStats(prev => {
+          const timings = timingRef.current;
+          const lastTimings = [...prev.lastTimings, ...timings].slice(-100);
+          const processed = prev.totalProcessed + 1;
+          const allTimes = lastTimings.filter(t => t.fileName !== '_modelo' && t.step === 'background-removal').map(t => t.ms);
+          const avg = allTimes.length > 0 ? Math.round(allTimes.reduce((a, b) => a + b, 0) / allTimes.length) : 0;
+          return { totalProcessed: processed, totalErrors: prev.totalErrors, avgTimeMs: avg, lastTimings };
+        });
 
         await saveAsset({
           id: task.id,
           fileName: task.file.name,
           originalBlob,
           processedBlob,
-          initialProcessedBlob: processedBlob,
+          initialProcessedBlob: upscaleEnabled ? bgRemovedBlob : undefined,
           timestamp: Date.now(),
         });
 
       } catch (error: any) {
-        if (error?.name === 'AbortError') break;
+        if (error?.name === 'AbortError' || error?.name === 'TimeoutError') {
+          if (error?.name === 'TimeoutError') {
+            setResults(prev => ({
+              ...prev,
+              [task.id]: {
+                ...prev[task.id],
+                status: 'error',
+                errorMessage: `La operación excedió el límite de ${TIMEOUT_MS / 1000}s`,
+                processingTimeMs: Math.round(performance.now() - tStart),
+              }
+            }));
+          }
+          break;
+        }
         const msg = error?.message || error?.toString() || 'Error desconocido';
         console.error(msg);
 
@@ -255,14 +356,21 @@ export function useImageProcessor() {
             ...prev[task.id],
             status: 'error',
             errorMessage: msg,
+            processingTimeMs: Math.round(performance.now() - tStart),
           }
         }));
+
+        setProcessingStats(prev => ({ ...prev, totalErrors: prev.totalErrors + 1 }));
       }
     }
 
     setCurrentProcessingId(null);
     setIsProcessing(false);
     abortRef.current = null;
+  };
+
+  const getResultIdByFileName = (fileName: string): string | undefined => {
+    return pendingIdByFileRef.current.get(fileName);
   };
 
   const cancelProcessing = useCallback(() => {
@@ -302,10 +410,17 @@ export function useImageProcessor() {
       if (signal.aborted) return;
 
       let finalBlob = bgRemovedBlob;
+      let wasUpscaled = false;
+      let processedWidth: number | undefined;
+      let processedHeight: number | undefined;
+      const bgRemovedUrl = trackUrl(URL.createObjectURL(bgRemovedBlob));
 
       if (upscaleEnabled) {
         setProcessingProgress(prev => ({ ...prev, [id]: 'Aplicando upscale...' }));
         try {
+          const tf = await import('@tensorflow/tfjs');
+          await tf.ready();
+          await tf.setBackend('cpu');
           const { default: Upscaler } = await import('upscaler');
           const upscaler = new Upscaler();
           const inputImg = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -316,7 +431,9 @@ export function useImageProcessor() {
             i.src = URL.createObjectURL(bgRemovedBlob);
           });
           if (signal.aborted) return;
-          const upscaleUrl = await upscaler.upscale(inputImg, { signal });
+          const upTimeout = timeoutSignal(TIMEOUT_MS, signal);
+          const upscaleUrl = await upscaler.upscale(inputImg, { signal: upTimeout.signal });
+          upTimeout.clear();
           if (signal.aborted) return;
           const upscaledDataUrl = typeof upscaleUrl === 'string' ? upscaleUrl : URL.createObjectURL(bgRemovedBlob);
           const upscaledImg = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -328,10 +445,23 @@ export function useImageProcessor() {
           const c = document.createElement('canvas');
           c.width = upscaledImg.width;
           c.height = upscaledImg.height;
-          c.getContext('2d')?.drawImage(upscaledImg, 0, 0);
+          const ctx = c.getContext('2d')!;
+          ctx.drawImage(inputImg, 0, 0, upscaledImg.width, upscaledImg.height);
+          ctx.globalCompositeOperation = 'source-atop';
+          ctx.drawImage(upscaledImg, 0, 0);
+          ctx.globalCompositeOperation = 'source-over';
+          const imgData = ctx.getImageData(0, 0, c.width, c.height);
+          for (let i = 3; i < imgData.data.length; i += 4) {
+            if (imgData.data[i] > 0 && imgData.data[i] < 15) imgData.data[i] = 0;
+            if (imgData.data[i] > 240) imgData.data[i] = 255;
+          }
+          ctx.putImageData(imgData, 0, 0);
           finalBlob = await new Promise<Blob>(resolve => {
             c.toBlob(b => resolve(b || bgRemovedBlob), 'image/png');
           });
+          wasUpscaled = true;
+          processedWidth = upscaledImg.width;
+          processedHeight = upscaledImg.height;
         } catch (e) {
           console.warn('Retry upscale failed:', e);
         }
@@ -342,6 +472,12 @@ export function useImageProcessor() {
       setProcessingProgress(prev => { const n = { ...prev }; delete n[id]; return n; });
 
       revokeUrl(asset.processedUrl);
+
+      // Revoke previous initialProcessedUrl if it existed
+      if (asset.initialProcessedUrl && asset.initialProcessedUrl !== asset.processedUrl) {
+        revokeUrl(asset.initialProcessedUrl);
+      }
+
       const processedUrl = trackUrl(URL.createObjectURL(finalBlob));
 
       setResults(prev => ({
@@ -349,9 +485,12 @@ export function useImageProcessor() {
         [id]: {
           ...prev[id],
           processedUrl,
-          initialProcessedUrl: processedUrl,
+          initialProcessedUrl: upscaleEnabled ? bgRemovedUrl : undefined,
           status: 'completed',
           errorMessage: undefined,
+          wasUpscaled,
+          processedWidth,
+          processedHeight,
         }
       }));
 
@@ -472,9 +611,9 @@ export function useImageProcessor() {
     }
   }, [results]);
 
-  const processBatch = useCallback((files: File[], upscale?: boolean) => {
+  const processBatch = (files: File[], upscale?: boolean) => {
     processImages(files, upscale);
-  }, []);
+  };
 
   return {
     results,
@@ -484,6 +623,8 @@ export function useImageProcessor() {
     modelLoaded,
     modelProgress,
     processingProgress,
+    processingStats,
+    getResultIdByFileName,
     preloadModel,
     processImages,
     processBatch,

@@ -75,7 +75,7 @@ function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onCon
 
 export default function Home() {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
-  const { results, isProcessing, currentProcessingId, modelLoading, modelLoaded, modelProgress, processingProgress, processImages, processBatch, cancelProcessing, retryAsset, clearHistory, updateResultBlob, deleteAsset, deleteMultiple, renameFile, renameBatch } = useImageProcessor();
+  const { results, isProcessing, currentProcessingId, modelLoading, modelLoaded, modelProgress, processingProgress, processingStats, getResultIdByFileName, processImages, processBatch, cancelProcessing, retryAsset, clearHistory, updateResultBlob, deleteAsset, deleteMultiple, renameFile, renameBatch } = useImageProcessor();
   const [viewMode, setViewMode] = useState<'dashboard' | 'upload' | 'results' | 'settings' | 'studio'>('dashboard');
   const [showSeoMenu, setShowSeoMenu] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
@@ -830,6 +830,17 @@ export default function Home() {
                       <div className={styles.statNumber}>{stats.timeSaved}s</div>
                       <div className={styles.statLabel}>Tiempo ahorrado</div>
                     </motion.div>
+                    {processingStats.totalProcessed > 0 && (
+                      <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                        <div className={styles.statIcon} style={{ background: 'rgba(201,96,60,0.12)', color: 'var(--primary)' }}><BarChart3 size={20} /></div>
+                        <div className={styles.statNumber}>{processingStats.avgTimeMs > 0 ? `${(processingStats.avgTimeMs / 1000).toFixed(1)}s` : '—'}</div>
+                        <div className={styles.statLabel}>
+                          {processingStats.totalErrors > 0
+                            ? `Promedio · ${processingStats.totalErrors} error${processingStats.totalErrors !== 1 ? 'es' : ''}`
+                            : 'Promedio por imagen'}
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
 
                   {stats.recentImages.length > 0 && (
@@ -900,7 +911,8 @@ export default function Home() {
                         style={{ display: 'contents' }}
                       >
                         {files.map((file) => {
-                          const status = results[file.name]?.status;
+                          const resultId = getResultIdByFileName(file.name);
+                          const status = resultId ? results[resultId]?.status : undefined;
                           return (
                             <Reorder.Item
                               value={file}
@@ -936,7 +948,7 @@ export default function Home() {
                                   {status === 'processing' && (
                                     <div className={styles.processingOverlay}>
                                       <Loader2 size={20} className={styles.processingSpinner} />
-                                      <span className={styles.processingStep}>{processingSteps[file.name] || 'Procesando...'}</span>
+                                      <span className={styles.processingStep}>{resultId ? (processingProgress[resultId] || 'Procesando...') : 'En cola'}</span>
                                     </div>
                                   )}
 
@@ -1032,7 +1044,10 @@ export default function Home() {
                                   >
                                     <div className={styles.checkerboard}></div>
                                     <div className={styles.compareSliderOverlay}>
-                                        <CompareSlider before={res.originalUrl} after={res.processedUrl} />
+                                        <CompareSlider
+                                          before={res.wasUpscaled && res.initialProcessedUrl ? res.initialProcessedUrl : res.originalUrl}
+                                          after={res.processedUrl}
+                                        />
                                     </div>
                                     <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 15, display: 'flex', gap: 4 }}>
                                       <button
@@ -1085,7 +1100,17 @@ export default function Home() {
                                   </div>
                                   {res.originalWidth && res.originalHeight && (
                                     <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: 2 }}>
-                                      {res.originalWidth} × {res.originalHeight} px
+                                      Original: {res.originalWidth} × {res.originalHeight} px
+                                    </div>
+                                  )}
+                                  {res.wasUpscaled && res.processedWidth && res.processedHeight && (
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--success)', marginBottom: 2, fontWeight: 600 }}>
+                                      Upscaled: {res.processedWidth} × {res.processedHeight} px (2x)
+                                    </div>
+                                  )}
+                                  {res.processingTimeMs != null && (
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: 2 }}>
+                                      {(res.processingTimeMs / 1000).toFixed(1)}s
                                     </div>
                                   )}
                                   <div className={styles.cardInfoRow}>
@@ -1094,6 +1119,11 @@ export default function Home() {
                                         <span className={styles.tag}>
                                           {exportFormat === 'jpeg' ? 'Procesado' : 'Fondo Eliminado'}
                                         </span>
+                                        {res.wasUpscaled && (
+                                          <span className={styles.tag} style={{ borderColor: 'var(--success)', color: 'var(--success)' }}>
+                                            Upscale 2x
+                                          </span>
+                                        )}
                                         <button
                                             className={styles.miniBtn}
                                             onClick={() => setEditingAssetId(id)}
@@ -1173,18 +1203,32 @@ export default function Home() {
                                 />
                                 {res.originalWidth && res.originalHeight && (
                                   <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 1, display: 'block' }}>
-                                    {res.originalWidth} × {res.originalHeight} px
+                                    Original: {res.originalWidth} × {res.originalHeight} px
                                   </span>
                                 )}
+                                {res.wasUpscaled && res.processedWidth && res.processedHeight && (
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--success)', marginTop: 1, display: 'block', fontWeight: 600 }}>
+                                    Upscaled: {res.processedWidth} × {res.processedHeight} px (2x)
+                                  </span>
+                                )}
+                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
                                 {res.status === 'completed' ? (
-                                  <span className={styles.tag} style={{ marginTop: 2 }}>
-                                    {exportFormat === 'jpeg' ? 'Procesado' : 'Fondo Eliminado'}
-                                  </span>
+                                  <>
+                                    <span className={styles.tag}>
+                                      {exportFormat === 'jpeg' ? 'Procesado' : 'Fondo Eliminado'}
+                                    </span>
+                                    {res.wasUpscaled && (
+                                      <span className={styles.tag} style={{ borderColor: 'var(--success)', color: 'var(--success)' }}>
+                                        Upscale 2x
+                                      </span>
+                                    )}
+                                  </>
                                 ) : res.status === 'error' ? (
-                                  <span className={styles.tag} style={{ marginTop: 2, borderColor: 'var(--danger)', color: 'var(--danger)' }}>Error</span>
+                                  <span className={styles.tag} style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Error</span>
                                 ) : (
-                                  <span className={styles.tag} style={{ marginTop: 2 }}>Procesando...</span>
+                                  <span className={styles.tag}>Procesando...</span>
                                 )}
+                                </div>
                               </div>
                               {res.status === 'completed' && (
                                 <>
