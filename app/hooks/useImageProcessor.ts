@@ -117,6 +117,7 @@ export function useImageProcessor() {
         const initialProcessedUrl = asset.initialProcessedBlob
           ? trackUrl(URL.createObjectURL(asset.initialProcessedBlob))
           : undefined;
+        const wasUpscaled = asset.wasUpscaled ?? !!asset.initialProcessedBlob;
         restored[asset.id] = {
           id: asset.id,
           fileName: asset.fileName,
@@ -125,6 +126,10 @@ export function useImageProcessor() {
           initialProcessedUrl,
           status: 'completed',
           originalSize: asset.originalBlob.size,
+          wasUpscaled,
+          processedWidth: asset.processedWidth,
+          processedHeight: asset.processedHeight,
+          processingTimeMs: asset.processingTimeMs,
         };
         // Get dimensions asynchronously
         getImageDimensions(originalUrl).then(dims => {
@@ -327,6 +332,10 @@ export function useImageProcessor() {
           originalBlob,
           processedBlob,
           initialProcessedBlob: upscaleEnabled ? bgRemovedBlob : undefined,
+          wasUpscaled,
+          processedWidth,
+          processedHeight,
+          processingTimeMs: totalMs,
           timestamp: Date.now(),
         });
 

@@ -10,6 +10,10 @@ export interface AssetRecord {
   originalBlob: Blob;
   processedBlob: Blob;
   initialProcessedBlob?: Blob; // Backup for reset functionality
+  wasUpscaled?: boolean;
+  processedWidth?: number;
+  processedHeight?: number;
+  processingTimeMs?: number;
   timestamp: number;
 }
 
