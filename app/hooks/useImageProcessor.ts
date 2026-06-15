@@ -114,10 +114,19 @@ export function useImageProcessor() {
       for (const asset of assets) {
         const originalUrl = trackUrl(URL.createObjectURL(asset.originalBlob));
         const processedUrl = trackUrl(URL.createObjectURL(asset.processedBlob));
-        const initialProcessedUrl = asset.initialProcessedBlob
-          ? trackUrl(URL.createObjectURL(asset.initialProcessedBlob))
+
+        // In old records (898ad31) initialProcessedBlob was always set to processedBlob
+        // In acee093 it was set to bgRemovedBlob only when upscaleEnabled
+        // In 5444106+ wasUpscaled is persisted directly
+        const initialProcessedBlobIsDifferent = asset.initialProcessedBlob && asset.initialProcessedBlob !== asset.processedBlob;
+        const initialProcessedUrl = initialProcessedBlobIsDifferent
+          ? trackUrl(URL.createObjectURL(asset.initialProcessedBlob!))
           : undefined;
-        const wasUpscaled = asset.wasUpscaled ?? !!asset.initialProcessedBlob;
+
+        const wasUpscaledPersisted = asset.wasUpscaled;
+        const needsDimensionInference = wasUpscaledPersisted == null && !initialProcessedBlobIsDifferent;
+        const wasUpscaled = wasUpscaledPersisted ?? (initialProcessedBlobIsDifferent ? true : undefined);
+
         restored[asset.id] = {
           id: asset.id,
           fileName: asset.fileName,
@@ -139,6 +148,29 @@ export function useImageProcessor() {
             return { ...prev, [asset.id]: { ...r, originalWidth: dims.width, originalHeight: dims.height } };
           });
         });
+        // For old records where we can't determine wasUpscaled from metadata,
+        // compare processed vs original dimensions to infer upscale
+        if (needsDimensionInference) {
+          const processedUrlForDims = processedUrl;
+          getImageDimensions(processedUrlForDims).then(pDims => {
+            getImageDimensions(originalUrl).then(oDims => {
+              setResults(prev => {
+                const r = prev[asset.id];
+                if (!r) return prev;
+                const inferred = pDims.width >= oDims.width * 1.9 && pDims.height >= oDims.height * 1.9;
+                return {
+                  ...prev,
+                  [asset.id]: {
+                    ...r,
+                    wasUpscaled: inferred,
+                    processedWidth: pDims.width,
+                    processedHeight: pDims.height,
+                  },
+                };
+              });
+            });
+          });
+        }
       }
       if (Object.keys(restored).length > 0) {
         setResults(restored);
