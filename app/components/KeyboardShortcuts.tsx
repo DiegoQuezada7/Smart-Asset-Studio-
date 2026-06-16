@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Command, X } from 'lucide-react';
+import { Keyboard, X } from 'lucide-react';
 
 interface ShortcutGroup {
   title: string;
@@ -17,33 +17,34 @@ const groups: ShortcutGroup[] = [
   {
     title: 'Navegación',
     shortcuts: [
-      { keys: '1', desc: 'Mesa de Trabajo' },
-      { keys: '2', desc: 'Resultados' },
-      { keys: '3', desc: 'Design Studio' },
-      { keys: '4', desc: 'Ajustes' },
+      { keys: '1', desc: 'Dashboard' },
+      { keys: '2', desc: 'Mesa de Trabajo' },
+      { keys: '3', desc: 'Resultados' },
+      { keys: '4', desc: 'Design Studio' },
+      { keys: '5', desc: 'Ajustes' },
     ],
   },
   {
     title: 'Acciones',
     shortcuts: [
       { keys: 'E', desc: 'Exportar todo' },
-      { keys: 'R', desc: 'Refinar máscara (en resultados)' },
-      { keys: '⌘ K', desc: 'Paleta de comandos' },
+      { keys: 'Supr', desc: 'Eliminar selección (en resultados)' },
+      { keys: 'Ctrl + K', desc: 'Paleta de comandos' },
     ],
   },
   {
     title: 'Mask Editor',
     shortcuts: [
-      { keys: '⌘ Z', desc: 'Deshacer' },
-      { keys: '⌘ Y', desc: 'Rehacer' },
+      { keys: 'Ctrl + Z', desc: 'Deshacer' },
+      { keys: 'Ctrl + Y', desc: 'Rehacer' },
       { keys: 'Espacio', desc: 'Modo mover (temporal)' },
     ],
   },
   {
     title: 'Design Studio',
     shortcuts: [
-      { keys: '⌘ Z', desc: 'Deshacer' },
-      { keys: '⌘ Y', desc: 'Rehacer' },
+      { keys: 'Ctrl + Z', desc: 'Deshacer' },
+      { keys: 'Ctrl + Y', desc: 'Rehacer' },
       { keys: 'Supr', desc: 'Eliminar objeto' },
       { keys: 'Flechas', desc: 'Mover 1px (10px con Shift)' },
     ],
@@ -68,7 +69,7 @@ export default function KeyboardShortcuts({ isOpen, onClose }: KeyboardShortcuts
           transition={{ duration: 0.12 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 3000,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'var(--overlay)',
             backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
@@ -90,7 +91,7 @@ export default function KeyboardShortcuts({ isOpen, onClose }: KeyboardShortcuts
               border: '1px solid var(--border-active)',
               borderRadius: 16,
               overflow: 'hidden',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              boxShadow: 'var(--shadow-lg)',
             }}
           >
             <div style={{
@@ -101,8 +102,8 @@ export default function KeyboardShortcuts({ isOpen, onClose }: KeyboardShortcuts
               borderBottom: '1px solid var(--border-subtle)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Command size={18} style={{ color: 'var(--primary)' }} />
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>
+                <Keyboard size={18} style={{ color: 'var(--primary)' }} />
+                <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-main)' }}>
                   Atajos de Teclado
                 </h3>
               </div>
@@ -138,6 +139,7 @@ export default function KeyboardShortcuts({ isOpen, onClose }: KeyboardShortcuts
                     textTransform: 'uppercase',
                     letterSpacing: '0.05em',
                     color: 'var(--text-dim)',
+                    margin: 0,
                     marginBottom: 6,
                   }}>
                     {group.title}

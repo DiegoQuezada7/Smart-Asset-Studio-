@@ -107,8 +107,9 @@ export default function PresentationMode({ images, currentIndex, isOpen, onClose
                 padding: 8, borderRadius: '50%', display: 'flex',
                 transition: 'all 0.15s',
               }}
+              aria-label="Anterior"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={20} aria-hidden="true" />
             </button>
             <span style={{
               color: 'white', fontSize: '0.85rem',
@@ -127,8 +128,9 @@ export default function PresentationMode({ images, currentIndex, isOpen, onClose
                 padding: 8, borderRadius: '50%', display: 'flex',
                 transition: 'all 0.15s',
               }}
+              aria-label="Siguiente"
             >
-              <ChevronRight size={20} />
+              <ChevronRight size={20} aria-hidden="true" />
             </button>
             <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.15)' }} />
             <button
@@ -143,8 +145,9 @@ export default function PresentationMode({ images, currentIndex, isOpen, onClose
                 cursor: 'pointer', opacity: 0.8, padding: 8, borderRadius: '50%',
                 display: 'flex', transition: 'all 0.15s',
               }}
+              aria-label="Descargar"
             >
-              <Download size={18} />
+              <Download size={18} aria-hidden="true" />
             </button>
             <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.15)' }} />
             <button
@@ -154,8 +157,9 @@ export default function PresentationMode({ images, currentIndex, isOpen, onClose
                 cursor: 'pointer', opacity: 0.8, padding: 8, borderRadius: '50%',
                 display: 'flex', transition: 'all 0.15s',
               }}
+              aria-label="Cerrar presentación"
             >
-              <X size={18} />
+              <X size={18} aria-hidden="true" />
             </button>
           </div>
         </motion.div>

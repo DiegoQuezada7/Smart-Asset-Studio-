@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, ImageIcon, Palette, Settings,
-  Download, Sparkles, Search, Command, ArrowRight,
+  Download, Sparkles, Search, Keyboard, ArrowRight,
   Scissors, Layers, CornerDownLeft
 } from 'lucide-react';
 
@@ -71,7 +71,7 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
           transition={{ duration: 0.12 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 3000,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'var(--overlay)',
             backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'flex-start',
             justifyContent: 'center', paddingTop: '12vh',
@@ -94,7 +94,7 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
               border: '1px solid var(--border-active)',
               borderRadius: 16,
               overflow: 'hidden',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              boxShadow: 'var(--shadow-lg)',
             }}
           >
             <div style={{
@@ -131,7 +131,7 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
                 border: '1px solid var(--border-subtle)',
                 fontFamily: 'inherit',
               }}>
-                <Command size={12} style={{display:'inline', verticalAlign:'middle'}} /> K
+                <Keyboard size={12} style={{display:'inline', verticalAlign:'middle'}} /> K
               </kbd>
             </div>
 

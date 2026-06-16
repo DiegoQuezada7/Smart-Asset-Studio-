@@ -44,11 +44,13 @@
     "jsdom": "^29.1.1",
     "sharp": "^0.34.5",
     "typescript": "^5",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "vitest-axe": "^0.1.0"
   },
   "build": {
     "appId": "com.smartasset.studio",
     "productName": "Smart Asset Studio",
+    "icon": "build/icon.png",
     "compression": "normal",
     "files": [
       "out/**/*",

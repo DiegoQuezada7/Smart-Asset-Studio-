@@ -117,7 +117,7 @@ export default function ImageLightbox({ images, initialIndex = 0, isOpen, onClos
           transition={{ duration: 0.15 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'rgba(0,0,0,0.92)',
+            background: 'var(--overlay-heavy)',
             backdropFilter: 'blur(8px)',
             display: 'flex', flexDirection: 'column',
           }}
@@ -259,21 +259,22 @@ export default function ImageLightbox({ images, initialIndex = 0, isOpen, onClos
 const btnStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.06)',
   border: '1px solid rgba(255,255,255,0.1)',
-  color: 'var(--text-main)',
+  color: 'var(--primary-text)',
   borderRadius: 6,
-  width: 34,
-  height: 34,
+  minWidth: 44,
+  minHeight: 44,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',
   transition: 'all 0.15s',
+  touchAction: 'manipulation',
 };
 
 const navBtnStyle: React.CSSProperties = {
   ...btnStyle,
-  width: 44,
-  height: 44,
+  minWidth: 44,
+  minHeight: 44,
   borderRadius: 12,
   background: 'rgba(0,0,0,0.5)',
   border: '1px solid rgba(255,255,255,0.1)',

@@ -1,85 +1,69 @@
 "use client";
 
 import { useDropzone } from "react-dropzone";
-import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette, Settings, Layers, Grid3X3, List, ArrowUpDown, ZoomIn, Maximize2, Home as HomeIcon, Clock, BarChart3, Play, Monitor, Eye, Focus, Zap, RefreshCw } from "lucide-react";
-import { useCallback, useState, useMemo, useEffect } from "react";
+import { Upload, X, ImageIcon, Download, Loader2, Sparkles, Pencil, Trash2, Scissors, Palette, Settings, Layers, Grid3X3, List, ArrowUpDown, ZoomIn, Maximize2, Home as HomeIcon, Clock, BarChart3, Play, Monitor, Eye, Focus, Zap, RefreshCw, Sun, Moon } from "lucide-react";
+import { useCallback, useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import styles from "./page.module.css";
 import { useImageProcessor } from "./hooks/useImageProcessor";
 import { downloadAsZip } from "./utils/downloader";
 import CompareSlider from "./components/CompareSlider";
 import MaskEditor from "./components/MaskEditor";
-import DesignStudio from "./components/studio/DesignStudio";
+import dynamic from "next/dynamic";
+
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { useToast } from "./contexts/ToastContext";
+import { useTheme } from "./contexts/ThemeContext";
 import EmptyState from "./components/EmptyState";
 import CommandPalette from "./components/CommandPalette";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
-import ImageLightbox from "./components/ImageLightbox";
-import ExportPreview from "./components/ExportPreview";
+import ConfirmModal from "./components/ConfirmModal";
 import ContextMenu from "./components/ContextMenu";
-import PresentationMode from "./components/PresentationMode";
 import ProcessingTimeline from "./components/ProcessingTimeline";
+import ExportPreview from "./components/ExportPreview";
+
+const DesignStudio = dynamic(() => import("./components/studio/DesignStudio"), { ssr: false });
+const PresentationMode = dynamic(() => import("./components/PresentationMode"), { ssr: false });
+const ImageLightbox = dynamic(() => import("./components/ImageLightbox"), { ssr: false });
 
 interface FileWithPreview extends File {
   preview: string;
 }
 
-function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000,
-        backdropFilter: 'blur(4px)',
-      }}
-      onClick={onCancel}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 8 }}
-        transition={{ duration: 0.15 }}
-        style={{
-          background: 'var(--bg-elevated)', border: '1px solid var(--border-active)', borderRadius: 16,
-          padding: '2rem', maxWidth: 400, width: '90%', display: 'flex', flexDirection: 'column', gap: '1.5rem',
-        }}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Confirmación"
-      >
-        <p style={{ color: 'var(--text-main)', fontSize: '0.95rem', lineHeight: 1.6 }}>{message}</p>
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onCancel}
-            style={{ background: 'transparent', border: '1px solid var(--border-active)', color: 'var(--text-muted)', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem' }}
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            style={{ background: 'var(--danger-dim)', border: '1px solid var(--danger)', color: 'var(--danger)', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600 }}
-          >
-            Confirmar
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
+function HomeInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-export default function Home() {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const { results, isProcessing, currentProcessingId, modelLoading, modelLoaded, modelProgress, processingProgress, processingStats, getResultIdByFileName, processImages, processBatch, cancelProcessing, retryAsset, clearHistory, updateResultBlob, deleteAsset, deleteMultiple, renameFile, renameBatch } = useImageProcessor();
   const [viewMode, setViewMode] = useState<'dashboard' | 'upload' | 'results' | 'settings' | 'studio'>('dashboard');
   const [showSeoMenu, setShowSeoMenu] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Force re-render on window resize (Electron maximize/minimize)
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    const onResize = () => forceRender(n => n + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Sync viewMode from URL on mount
+  useEffect(() => {
+    const view = searchParams.get('view');
+    if (view && ['dashboard', 'upload', 'results', 'settings', 'studio'].includes(view)) {
+      setViewMode(view as typeof viewMode);
+    }
+  }, []);
+
+  // Sync viewMode changes to URL
+  const navigate = useCallback((view: typeof viewMode) => {
+    setViewMode(view);
+    router.replace(`?view=${view}`, { scroll: false });
+  }, [router]);
 
   // Gallery state
   const [galleryView, setGalleryView] = useLocalStorage<'grid' | 'list'>('gallery_view', 'grid');
@@ -115,6 +99,7 @@ export default function Home() {
   const [showPresetInput, setShowPresetInput] = useState(false);
   const [presetName, setPresetName] = useState('');
   const toast = useToast();
+  const themeCtx = useTheme();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) =>
@@ -123,7 +108,7 @@ export default function Home() {
       })
     );
     setFiles((prev) => [...prev, ...newFiles]);
-    if (viewMode === 'results') setViewMode('upload');
+    if (viewMode === 'results') navigate('upload');
   }, [viewMode]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -138,7 +123,7 @@ export default function Home() {
   const handleProcess = async () => {
     if (files.length === 0) return;
     processBatch(files, shouldUpscale);
-    setViewMode('results');
+    navigate('results');
   };
 
   const handleCancel = () => {
@@ -183,6 +168,13 @@ export default function Home() {
     deleteMultiple(Array.from(selectedIds));
     setSelectedIds(new Set());
     toast.addToast('info', `${count} imagen${count !== 1 ? 'es' : ''} eliminada${count !== 1 ? 's' : ''}`);
+  };
+
+  const handleClearHistory = () => {
+    const count = completedCount;
+    clearHistory();
+    setShowConfirm(false);
+    toast.addToast('info', `Historial borrado (${count} imagen${count !== 1 ? 'es' : ''})`);
   };
 
   const handleDeleteAsset = (id: string) => {
@@ -359,11 +351,11 @@ export default function Home() {
   const isStudioActive = viewMode === 'studio';
 
   useKeyboard([
-    { key: '1', handler: () => setViewMode('dashboard'), enabled: !isStudioActive },
-    { key: '2', handler: () => setViewMode('upload'), enabled: !isStudioActive },
-    { key: '3', handler: () => hasResults && setViewMode('results'), enabled: !isStudioActive },
-    { key: '4', handler: () => setViewMode('studio'), enabled: !isStudioActive },
-    { key: '5', handler: () => setViewMode('settings'), enabled: !isStudioActive },
+    { key: '1', handler: () => navigate('dashboard'), enabled: !isStudioActive },
+    { key: '2', handler: () => navigate('upload'), enabled: !isStudioActive },
+    { key: '3', handler: () => hasResults && navigate('results'), enabled: !isStudioActive },
+    { key: '4', handler: () => navigate('studio'), enabled: !isStudioActive },
+    { key: '5', handler: () => navigate('settings'), enabled: !isStudioActive },
     { key: 'e', handler: handleExport, enabled: !isStudioActive },
     { key: '?', handler: () => setShortcutsOpen(true) },
     { key: 'k', ctrl: true, handler: () => setCommandPaletteOpen(true) },
@@ -377,11 +369,11 @@ export default function Home() {
   ]);
 
   const paletteCommands = useMemo(() => [
-    { id: 'dashboard', label: 'Ir a Dashboard', shortcut: '1', icon: <HomeIcon size={16} />, action: () => setViewMode('dashboard') },
-    { id: 'upload', label: 'Ir a Mesa de Trabajo', shortcut: '2', icon: <Upload size={16} />, action: () => setViewMode('upload') },
-    { id: 'results', label: 'Ir a Resultados', shortcut: '3', icon: <ImageIcon size={16} />, action: () => hasResults && setViewMode('results'), enabled: hasResults },
-    { id: 'studio', label: 'Ir a Design Studio', shortcut: '4', icon: <Palette size={16} />, action: () => setViewMode('studio') },
-    { id: 'settings', label: 'Ir a Ajustes', shortcut: '5', icon: <Settings size={16} />, action: () => setViewMode('settings') },
+    { id: 'dashboard', label: 'Ir a Dashboard', shortcut: '1', icon: <HomeIcon size={16} />, action: () => navigate('dashboard') },
+    { id: 'upload', label: 'Ir a Mesa de Trabajo', shortcut: '2', icon: <Upload size={16} />, action: () => navigate('upload') },
+    { id: 'results', label: 'Ir a Resultados', shortcut: '3', icon: <ImageIcon size={16} />, action: () => hasResults && navigate('results'), enabled: hasResults },
+    { id: 'studio', label: 'Ir a Design Studio', shortcut: '4', icon: <Palette size={16} />, action: () => navigate('studio') },
+    { id: 'settings', label: 'Ir a Ajustes', shortcut: '5', icon: <Settings size={16} />, action: () => navigate('settings') },
     { id: 'export', label: 'Exportar Todo', shortcut: 'E', icon: <Download size={16} />, action: handleExport, enabled: completedResults.length > 0 },
     { id: 'process', label: 'Procesar Archivos', shortcut: '', icon: <Sparkles size={16} />, action: handleProcess, enabled: files.length > 0 && !isProcessing },
     { id: 'presentation', label: 'Modo Presentación', shortcut: '', icon: <Monitor size={16} />, action: () => { if (completedResults.length > 0) { setPresentationIndex(0); setPresentationOpen(true); } }, enabled: completedResults.length > 0 },
@@ -395,6 +387,14 @@ export default function Home() {
 
   return (
     <div className={styles.container}>
+      {/* Skip link */}
+      <a
+        href="#main-content"
+        className={styles.skipLink}
+      >
+        Saltar al contenido principal
+      </a>
+
       {/* Sidebar Navigation */}
       <aside className={`${styles.sidebar} ${focusMode ? styles.sidebarCollapsed : ''}`}>
         <div className={styles.logo}>
@@ -407,89 +407,70 @@ export default function Home() {
         <nav className={styles.nav}>
           <button
             className={`${styles.navItem} ${viewMode === 'dashboard' ? styles.active : ''}`}
-            onClick={() => setViewMode('dashboard')}
+            onClick={() => navigate('dashboard')}
           >
             <HomeIcon size={16} /> {!focusMode && 'Dashboard'}
           </button>
           <button
             className={`${styles.navItem} ${viewMode === 'upload' ? styles.active : ''}`}
-            onClick={() => setViewMode('upload')}
+            onClick={() => navigate('upload')}
           >
             <Upload size={16} /> {!focusMode && 'Mesa de Trabajo'}
           </button>
           <button
              className={`${styles.navItem} ${viewMode === 'results' ? styles.active : ''}`}
-             onClick={() => hasResults && setViewMode('results')}
+             onClick={() => hasResults && navigate('results')}
              disabled={!hasResults}
           >
             <ImageIcon size={16} /> {!focusMode && <>Resultados {hasResults && <span className={styles.badge}>{Object.keys(results).length}</span>}</>}
           </button>
           <button
              className={`${styles.navItem} ${viewMode === 'studio' ? styles.active : ''}`}
-             onClick={() => setViewMode('studio')}
+             onClick={() => navigate('studio')}
           >
              <Palette size={16} /> {!focusMode && 'Design Studio'}
           </button>
           <button
             className={`${styles.navItem} ${viewMode === 'settings' ? styles.active : ''}`}
-            onClick={() => setViewMode('settings')}
+            onClick={() => navigate('settings')}
           >
             <Settings size={16} /> {!focusMode && 'Ajustes'}
           </button>
         </nav>
 
         {/* Bottom hint */}
-        <div style={{
-          marginTop: 'auto',
-          padding: '0.5rem 1rem',
-          fontSize: '0.7rem',
-          color: 'var(--text-dim)',
-          textAlign: 'center',
-        }}>
+        <div className={styles.sidebarFooter}>
+          <button
+            onClick={() => themeCtx.toggleTheme()}
+            className={styles.sidebarShortcutBtn}
+            aria-label={`Cambiar a modo ${themeCtx.theme === 'dark' ? 'claro' : 'oscuro'}`}
+          >
+            {themeCtx.theme === 'dark' ? <Sun size={14} aria-hidden="true" /> : <Moon size={14} aria-hidden="true" />}
+            {' '}Tema
+          </button>
           <button
             onClick={() => setShortcutsOpen(true)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: '0.7rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              justifyContent: 'center',
-              width: '100%',
-              padding: '4px 0',
-              transition: 'color 0.2s',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-dim)'}
+            className={styles.sidebarShortcutBtn}
+            aria-label="Abrir atajos de teclado"
           >
-            <span style={{
-              padding: '1px 5px',
-              background: 'var(--bg-card)',
-              borderRadius: 3,
-              border: '1px solid var(--border-subtle)',
-              fontSize: 9,
-            }}>?</span>
+            <span className={styles.shortcutKey}>?</span>
             {' '}Atajos
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className={styles.main}>
+      <main className={styles.main} id="main-content">
         {/* Header */}
         <header className={styles.header}>
             <div className={styles.headerContent}>
-              <h1>
+              <span role="heading" aria-level={viewMode === 'dashboard' ? 2 : 1} className={styles.title}>
                 {viewMode === 'dashboard' && 'Dashboard'}
                 {viewMode === 'upload' && 'Mesa de Trabajo'}
                 {viewMode === 'results' && 'Activos Procesados'}
                 {viewMode === 'settings' && 'Configuración'}
                 {viewMode === 'studio' && 'Design Studio'}
-              </h1>
+              </span>
               <p>
                 {viewMode === 'dashboard' && 'Resumen de tu actividad y acceso rápido'}
                 {viewMode === 'upload' && 'Sube y gestiona tus imágenes'}
@@ -526,7 +507,7 @@ export default function Home() {
                         : <span>{files.length} Archivos</span>
                       }
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div className={styles.actionRow}>
                       <button
                         className="btn-primary"
                         onClick={handleProcess}
@@ -540,9 +521,8 @@ export default function Home() {
                       </button>
                       {isProcessing && (
                         <button
-                          className={styles.secondaryBtn}
+                          className={`${styles.secondaryBtn} ${styles.cancelBtn}`}
                           onClick={handleCancel}
-                          style={{ height: 36, borderColor: 'var(--danger)', color: 'var(--danger)' }}
                         >
                           <X size={16} /> Cancelar
                         </button>
@@ -577,19 +557,15 @@ export default function Home() {
                       <div className={styles.divider}></div>
 
                       {/* Zoom slider */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <ZoomIn size={14} style={{ color: 'var(--text-dim)' }} />
+                      <div className={styles.zoomRow}>
+                        <ZoomIn size={14} aria-hidden="true" />
                         <input
                           type="range"
                           min="0"
                           max="100"
                           value={zoomLevel}
                           onChange={(e) => setZoomLevel(Number(e.target.value))}
-                          style={{
-                            width: 60,
-                            accentColor: 'var(--primary)',
-                            cursor: 'pointer',
-                          }}
+                          className={styles.zoomSlider}
                           aria-label="Zoom de galería"
                         />
                       </div>
@@ -597,21 +573,11 @@ export default function Home() {
                       <div className={styles.divider}></div>
 
                       {/* Sort */}
-                      <div style={{ position: 'relative' }}>
+                      <div className={styles.selectWrapper}>
                         <select
                           value={sortMode}
                           onChange={(e) => setSortMode(e.target.value as any)}
-                          style={{
-                            background: 'var(--bg-card)',
-                            border: '1px solid var(--border-subtle)',
-                            color: 'var(--text-muted)',
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            fontSize: '0.8rem',
-                            cursor: 'pointer',
-                            fontFamily: 'inherit',
-                            outline: 'none',
-                          }}
+                          className={styles.sortSelect}
                           aria-label="Ordenar por"
                         >
                           <option value="date">Más recientes</option>
@@ -622,33 +588,19 @@ export default function Home() {
                       <div className={styles.divider}></div>
 
                       {/* Search */}
-                      <div style={{ position: 'relative' }}>
+                      <div className={styles.searchWrapper}>
                         <input
                           type="text"
                           placeholder="Buscar…"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          style={{
-                            background: 'var(--bg-card)',
-                            border: '1px solid var(--border-subtle)',
-                            color: 'var(--text-main)',
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            fontSize: '0.8rem',
-                            width: 120,
-                            outline: 'none',
-                            fontFamily: 'inherit',
-                          }}
+                          className={styles.searchInput}
                           aria-label="Buscar por nombre"
                         />
                         {searchQuery && (
                           <button
                             onClick={() => setSearchQuery('')}
-                            style={{
-                              position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
-                              background: 'transparent', border: 'none', color: 'var(--text-dim)',
-                              cursor: 'pointer', padding: 2, display: 'flex',
-                            }}
+                            className={styles.searchClearBtn}
                             aria-label="Limpiar búsqueda"
                           >
                             <X size={12} />
@@ -659,19 +611,12 @@ export default function Home() {
                       <div className={styles.divider}></div>
 
                       {/* Select all */}
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        fontSize: '0.8rem',
-                        color: 'var(--text-dim)',
-                        cursor: 'pointer',
-                      }}>
+                      <label className={styles.selectAllLabel}>
                         <input
                           type="checkbox"
                           checked={selectedIds.size === sortedResults.length && sortedResults.length > 0}
                           onChange={selectAll}
-                          style={{ accentColor: 'var(--primary)' }}
+                          className={styles.selectAllCheckbox}
                         />
                         Todo
                       </label>
@@ -705,7 +650,7 @@ export default function Home() {
                             </button>
                         </motion.div>
                     ) : (
-                        <button className={styles.secondaryBtn} onClick={() => setShowSeoMenu(true)} style={{ height: 32, fontSize: '0.8rem' }}>
+                        <button className={`${styles.secondaryBtn} ${styles.secondaryBtnSm}`} onClick={() => setShowSeoMenu(true)}>
                             <Pencil size={14} /> SEO Lote
                         </button>
                     )}
@@ -714,9 +659,8 @@ export default function Home() {
 
                     {/* Reprocess */}
                     <button
-                      className={styles.secondaryBtn}
+                      className={`${styles.secondaryBtn} ${styles.secondaryBtnSm}`}
                       onClick={handleReprocessBatch}
-                      style={{ height: 32, fontSize: '0.8rem' }}
                       disabled={isProcessing}
                     >
                       <Loader2 size={14} /> Reprocesar
@@ -728,9 +672,8 @@ export default function Home() {
                     {selectedIds.size > 0 && (
                       <>
                         <button
-                          className={styles.secondaryBtn}
+                          className={`${styles.secondaryBtn} ${styles.secondaryBtnSm} ${styles.secondaryBtnDanger}`}
                           onClick={handleDeleteBatch}
-                          style={{ height: 32, fontSize: '0.8rem', borderColor: 'var(--danger)', color: 'var(--danger)' }}
                         >
                           <Trash2 size={14} /> ({selectedIds.size})
                         </button>
@@ -738,7 +681,7 @@ export default function Home() {
                       </>
                     )}
 
-                    <button className="btn-primary" onClick={handleExport} style={{ height: 32, fontSize: '0.8rem', padding: '0 1rem' }}>
+                    <button className={`btn-primary ${styles.exportBtn}`} onClick={handleExport}>
                         <div className={styles.btnContent}>
                             <Download size={14} /> Exportar
                         </div>
@@ -764,7 +707,7 @@ export default function Home() {
             <div className={styles.scrollArea}>
 
               {/* STUDIO VIEW — always mounted to preserve Fabric.js canvas state */}
-              <div style={{display: viewMode === 'studio' ? 'block' : 'none', height: '100%'}}>
+              <div className={styles.studioContainer} style={{display: viewMode === 'studio' ? 'block' : 'none'}}>
                   <DesignStudio
                       assets={completedResults}
                       exportFormat={exportFormat}
@@ -787,9 +730,9 @@ export default function Home() {
                   <div className={styles.dashboardMain}>
                     <div className={styles.dashHeader}>
                       <div>
-                        <h2 className={styles.dashTitle}>
+                        <h1 className={styles.dashTitle}>
                           Buenas {stats.totalProcessed > 0 ? 'de vuelta' : 'bienvenido'}
-                        </h2>
+                        </h1>
                         <p className={styles.dashSubtitle}>
                           {stats.totalProcessed > 0
                             ? `${stats.totalProcessed} imágenes procesadas · ${stats.timeSaved}s ahorrados`
@@ -797,12 +740,12 @@ export default function Home() {
                         </p>
                       </div>
                       <div className={styles.dashQuickActions}>
-                        <button className={styles.dashQuickBtn} onClick={() => setViewMode('upload')}>
+                        <button className={styles.dashQuickBtn} onClick={() => navigate('upload')}>
                           <Upload size={16} /> Subir
                         </button>
                         {completedResults.length > 0 && (
                           <>
-                            <button className={styles.dashQuickBtn} onClick={() => setViewMode('results')}>
+                            <button className={styles.dashQuickBtn} onClick={() => navigate('results')}>
                               <ImageIcon size={16} /> Resultados
                             </button>
                             <button className={styles.dashQuickBtn} onClick={() => { setPresentationIndex(0); setPresentationOpen(true); }}>
@@ -820,19 +763,19 @@ export default function Home() {
                       <div className={styles.statNumber}>{stats.totalProcessed}</div>
                       <div className={styles.statLabel}>Imágenes procesadas</div>
                     </motion.div>
-                    <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                      <div className={styles.statIcon} style={{ background: 'rgba(212,167,106,0.12)', color: 'var(--accent-gold)' }}><Download size={20} /></div>
-                      <div className={styles.statNumber}>{stats.totalExports}</div>
-                      <div className={styles.statLabel}>Exportaciones realizadas</div>
-                    </motion.div>
-                    <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-                      <div className={styles.statIcon} style={{ background: 'rgba(107,143,94,0.12)', color: 'var(--success)' }}><Zap size={20} /></div>
-                      <div className={styles.statNumber}>{stats.timeSaved}s</div>
-                      <div className={styles.statLabel}>Tiempo ahorrado</div>
-                    </motion.div>
-                    {processingStats.totalProcessed > 0 && (
-                      <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                        <div className={styles.statIcon} style={{ background: 'rgba(201,96,60,0.12)', color: 'var(--primary)' }}><BarChart3 size={20} /></div>
+<motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+                    <div className={`${styles.statIcon} ${styles.statIconGold}`}><Download size={20} /></div>
+                    <div className={styles.statNumber}>{stats.totalExports}</div>
+                    <div className={styles.statLabel}>Exportaciones realizadas</div>
+                  </motion.div>
+                  <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+                    <div className={`${styles.statIcon} ${styles.statIconSuccess}`}><Zap size={20} /></div>
+                    <div className={styles.statNumber}>{stats.timeSaved}s</div>
+                    <div className={styles.statLabel}>Tiempo ahorrado</div>
+                  </motion.div>
+                  {processingStats.totalProcessed > 0 && (
+                    <motion.div className={styles.statCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                      <div className={`${styles.statIcon} ${styles.statIconPrimary}`}><BarChart3 size={20} /></div>
                         <div className={styles.statNumber}>{processingStats.avgTimeMs > 0 ? `${(processingStats.avgTimeMs / 1000).toFixed(1)}s` : '—'}</div>
                         <div className={styles.statLabel}>
                           {processingStats.totalErrors > 0
@@ -848,7 +791,7 @@ export default function Home() {
                       <div className={styles.sectionHeader}>
                         <h3 className={styles.sectionTitle}>Recientes</h3>
                         <button className={styles.sectionAction} onClick={() => setTimelineOpen(true)}>
-                          <Clock size={14} style={{ marginRight: 4 }} />
+                          <Clock size={14} className={styles.clockIcon} />
                           Ver timeline
                         </button>
                       </div>
@@ -880,9 +823,9 @@ export default function Home() {
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.2 }}
-                      style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', paddingTop: '2rem' }}
+                      className={styles.emptyStateWrapper}
                     >
-                      <EmptyState view="upload" onAction={() => setViewMode('upload')} />
+                      <EmptyState view="upload" onAction={() => navigate('upload')} />
                     </motion.div>
                   )}
                 </motion.div>
@@ -899,7 +842,7 @@ export default function Home() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
                   transition={{ duration: 0.18 }}
-                  style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
+                  className={styles.uploadContainer}
                 >
                   {files.length > 0 ? (
                     <div className={styles.gallery} style={{ gridTemplateColumns: gridCols }}>
@@ -908,7 +851,7 @@ export default function Home() {
                         values={files}
                         onReorder={setFiles}
                         as="div"
-                        style={{ display: 'contents' }}
+                        className={styles.reorderGroup}
                       >
                         {files.map((file) => {
                           const resultId = getResultIdByFileName(file.name);
@@ -918,8 +861,7 @@ export default function Home() {
                               value={file}
                               key={file.name}
                               as="div"
-                              className={`${styles.card} ${styles.cardLiftGlow}`}
-                              style={{ listStyle: 'none', cursor: 'grab' }}
+                              className={`${styles.card} ${styles.cardLiftGlow} ${styles.reorderItem}`}
                               whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
                             >
                               <div className={styles.cardImageWrapper}>
@@ -979,7 +921,7 @@ export default function Home() {
                   ) : (
                     <div className={styles.emptyStateWrapper} {...getRootProps()}>
                       <input {...getInputProps()} />
-                      <div style={{ pointerEvents: 'none' }}>
+                      <div className={styles.uploadDropDisabled}>
                         <EmptyState
                           view="upload"
                           onAction={() => document.querySelector<HTMLInputElement>('input[type="file"]')?.click()}
@@ -1007,23 +949,12 @@ export default function Home() {
                       {sortedResults.map(([id, res]) => (
                         <div key={id} className={`${galleryView === 'grid' ? `${styles.card} ${styles.cardLiftGlow}` : styles.listCard}`}>
                           {/* Checkbox (always visible) */}
-                          <div
-                            style={{
-                              position: galleryView === 'grid' ? 'absolute' : 'relative',
-                              top: galleryView === 'grid' ? 8 : undefined,
-                              left: galleryView === 'grid' ? 8 : undefined,
-                              zIndex: 20,
-                              padding: galleryView === 'list' ? '0 8px 0 0' : undefined,
-                              display: galleryView === 'grid' ? undefined : 'flex',
-                              alignItems: 'center',
-                            }}
-                            className={galleryView === 'grid' ? styles.cardCheckbox : ''}
-                          >
+                          <div className={galleryView === 'grid' ? `${styles.cardCheckbox} ${styles.checkboxGrid}` : styles.checkboxList}>
                             <input
                               type="checkbox"
                               checked={selectedIds.has(id)}
                               onChange={() => toggleSelect(id)}
-                              style={{ accentColor: 'var(--primary)', cursor: 'pointer' }}
+                              className={styles.resultCheckbox}
                               onClick={(e) => e.stopPropagation()}
                             />
                           </div>
@@ -1034,12 +965,11 @@ export default function Home() {
                               <div className={styles.imgContainer}>
                                 {res.status === 'completed' ? (
                                   <div
-                                    className={styles.imgContainerInner}
+                                    className={`${styles.imgContainerInner} ${styles.imgContainerClickable}`}
                                     onClick={() => {
                                       const idx = completedResults.findIndex(r => r.id === id);
                                       if (idx >= 0) { setLightboxIndex(idx); setLightboxOpen(true); }
                                     }}
-                                    style={{ cursor: 'pointer' }}
                                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ id, x: e.clientX, y: e.clientY }); }}
                                   >
                                     <div className={styles.checkerboard}></div>
@@ -1049,7 +979,7 @@ export default function Home() {
                                           after={res.processedUrl}
                                         />
                                     </div>
-                                    <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 15, display: 'flex', gap: 4 }}>
+                                    <div className={styles.downloadOverlay}>
                                       <button
                                         className={styles.miniIconBtn}
                                         onClick={(e) => { e.stopPropagation(); downloadIndividual(id); }}
@@ -1099,17 +1029,17 @@ export default function Home() {
                                     <Pencil size={12} className={styles.editIcon} aria-hidden="true" />
                                   </div>
                                   {res.originalWidth && res.originalHeight && (
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: 2 }}>
+                                    <div className={styles.dimText}>
                                       Original: {res.originalWidth} × {res.originalHeight} px
                                     </div>
                                   )}
                                   {res.wasUpscaled && res.processedWidth && res.processedHeight && (
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--success)', marginBottom: 2, fontWeight: 600 }}>
+                                    <div className={styles.upscaleText}>
                                       Upscaled: {res.processedWidth} × {res.processedHeight} px (2x)
                                     </div>
                                   )}
                                   {res.processingTimeMs != null && (
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: 2 }}>
+                                    <div className={styles.processingTimeText}>
                                       {(res.processingTimeMs / 1000).toFixed(1)}s
                                     </div>
                                   )}
@@ -1120,7 +1050,7 @@ export default function Home() {
                                           {exportFormat === 'jpeg' ? 'Procesado' : 'Fondo Eliminado'}
                                         </span>
                                         {res.wasUpscaled && (
-                                          <span className={styles.tag} style={{ borderColor: 'var(--success)', color: 'var(--success)' }}>
+                                          <span className={`${styles.tag} ${styles.tagSuccess}`}>
                                             Upscale 2x
                                           </span>
                                         )}
@@ -1134,7 +1064,7 @@ export default function Home() {
                                       </>
                                     ) : res.status === 'error' ? (
                                       <>
-                                        <span className={styles.tag} style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Error</span>
+                                        <span className={`${styles.tag} ${styles.tagDanger}`}>Error</span>
                                         <button
                                             className={styles.miniBtn}
                                             onClick={() => handleRetry(id)}
@@ -1165,20 +1095,19 @@ export default function Home() {
                           ) : (
                             /* LIST CARD */
                             <div
-                              className={styles.listCardInner}
+                              className={`${styles.listCardInner} ${res.status === 'completed' ? styles.listCardClickable : ''}`}
                               onClick={() => {
                                 if (res.status === 'completed') {
                                   const idx = completedResults.findIndex(r => r.id === id);
                                   if (idx >= 0) { setLightboxIndex(idx); setLightboxOpen(true); }
                                 }
                               }}
-                              style={{ cursor: res.status === 'completed' ? 'pointer' : 'default' }}
                             >
                               <div className={styles.listCardPreview}>
                                 {res.status === 'completed' ? (
-                                  <img src={res.processedUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                  <img src={res.processedUrl} alt="" className={styles.listCardPreviewImg} />
                                 ) : res.status === 'error' ? (
-                                  <div className={styles.errorWrapper} style={{ padding: '1rem' }}>
+                                  <div className={`${styles.errorWrapper} ${styles.errorWrapperContent}`}>
                                     <div className={styles.errorIcon}>!</div>
                                     <p className={styles.errorMessage}>{res.errorMessage || 'Error'}</p>
                                     <button
@@ -1192,39 +1121,38 @@ export default function Home() {
                                   <Loader2 className={styles.spin} />
                                 )}
                               </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className={styles.listCardInfo}>
                                 <input
-                                  className={styles.fileNameInput}
+                                  className={`${styles.fileNameInput} ${styles.listCardName}`}
                                   value={res.fileName}
                                   onChange={(e) => renameFile(res.id, e.target.value)}
                                   aria-label="Nombre de archivo"
-                                  style={{ fontSize: '0.85rem', fontWeight: 500 }}
                                   onClick={(e) => e.stopPropagation()}
                                 />
                                 {res.originalWidth && res.originalHeight && (
-                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 1, display: 'block' }}>
+                                  <span className={styles.listCardDimText}>
                                     Original: {res.originalWidth} × {res.originalHeight} px
                                   </span>
                                 )}
                                 {res.wasUpscaled && res.processedWidth && res.processedHeight && (
-                                  <span style={{ fontSize: '0.7rem', color: 'var(--success)', marginTop: 1, display: 'block', fontWeight: 600 }}>
+                                  <span className={styles.listCardUpscale}>
                                     Upscaled: {res.processedWidth} × {res.processedHeight} px (2x)
                                   </span>
                                 )}
-                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                                <div className={styles.listCardTags}>
                                 {res.status === 'completed' ? (
                                   <>
                                     <span className={styles.tag}>
                                       {exportFormat === 'jpeg' ? 'Procesado' : 'Fondo Eliminado'}
                                     </span>
                                     {res.wasUpscaled && (
-                                      <span className={styles.tag} style={{ borderColor: 'var(--success)', color: 'var(--success)' }}>
+                                      <span className={`${styles.tag} ${styles.tagSuccess}`}>
                                         Upscale 2x
                                       </span>
                                     )}
                                   </>
                                 ) : res.status === 'error' ? (
-                                  <span className={styles.tag} style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Error</span>
+                                  <span className={`${styles.tag} ${styles.tagDanger}`}>Error</span>
                                 ) : (
                                   <span className={styles.tag}>Procesando...</span>
                                 )}
@@ -1248,10 +1176,9 @@ export default function Home() {
                                       <Scissors size={12} /> Refinar
                                   </button>
                                   <button
-                                      className={styles.miniBtn}
+                                      className={`${styles.miniBtn} ${styles.miniBtnDanger}`}
                                       onClick={(e) => { e.stopPropagation(); handleDeleteAsset(id); }}
                                       aria-label="Eliminar"
-                                      style={{ borderColor: 'rgba(255,77,77,0.3)', color: 'var(--danger)' }}
                                   >
                                       <Trash2 size={12} /> Eliminar
                                   </button>
@@ -1263,7 +1190,7 @@ export default function Home() {
                       ))}
                     </div>
                   ) : (
-                    <EmptyState view="results" onAction={() => setViewMode('upload')} />
+                    <EmptyState view="results" onAction={() => navigate('upload')} />
                   )}
                 </motion.div>
               )}
@@ -1317,7 +1244,7 @@ export default function Home() {
 
                       <div className={styles.settingGroup}>
                         <h3>Color de Fondo</h3>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                        <div className={styles.colorRow}>
                           {[
                             { label: 'Transparente', value: '' },
                             { label: 'Blanco', value: '#FFFFFF' },
@@ -1327,40 +1254,26 @@ export default function Home() {
                             <button
                               key={value}
                               onClick={() => setBgColor(value)}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 8,
-                                padding: '8px 14px', borderRadius: 8,
-                                background: bgColor === value ? 'var(--primary-dim)' : 'transparent',
-                                border: `1px solid ${bgColor === value ? 'var(--primary)' : 'var(--border-subtle)'}`,
-                                color: bgColor === value ? 'var(--primary)' : 'var(--text-muted)',
-                                cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem',
-                                transition: 'all 0.15s',
-                              }}
+                              className={styles.colorOption}
+                              data-active={bgColor === value || undefined}
                             >
-                              <span style={{
-                                width: 18, height: 18, borderRadius: '50%',
+                              <span className={styles.colorSwatch} style={{
                                 background: value || 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'18\' height=\'18\'%3E%3Crect width=\'9\' height=\'9\' fill=\'%23ccc\'/%3E%3Crect x=\'9\' y=\'9\' width=\'9\' height=\'9\' fill=\'%23ccc\'/%3E%3Crect x=\'9\' width=\'9\' height=\'9\' fill=\'%23fff\'/%3E%3Crect y=\'9\' width=\'9\' height=\'9\' fill=\'%23fff\'/%3E%3C/svg%3E")',
                                 backgroundSize: 'cover',
                                 border: value ? 'none' : '1px solid var(--border-subtle)',
-                                flexShrink: 0,
                               }} />
                               {label}
                             </button>
                           ))}
-                          <label style={{
-                            display: 'flex', alignItems: 'center', gap: 8,
-                            padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
-                            background: !['', '#FFFFFF', '#000000', '#e0e0e0'].includes(bgColor) ? 'var(--primary-dim)' : 'transparent',
-                            border: `1px solid ${!['', '#FFFFFF', '#000000', '#e0e0e0'].includes(bgColor) ? 'var(--primary)' : 'var(--border-subtle)'}`,
-                            color: !['', '#FFFFFF', '#000000', '#e0e0e0'].includes(bgColor) ? 'var(--primary)' : 'var(--text-muted)',
-                            fontFamily: 'inherit', fontSize: '0.85rem',
-                            transition: 'all 0.15s',
-                          }}>
+                          <label
+                            className={styles.colorOption}
+                            data-active={!['', '#FFFFFF', '#000000', '#e0e0e0'].includes(bgColor) || undefined}
+                          >
                             <input
                               type="color"
                               value={bgColor || '#FFFFFF'}
                               onChange={(e) => setBgColor(e.target.value)}
-                              style={{ width: 24, height: 24, border: 'none', cursor: 'pointer', background: 'transparent', padding: 0 }}
+                              className={styles.customColorInput}
                             />
                             Personalizado
                           </label>
@@ -1375,53 +1288,45 @@ export default function Home() {
 
                       <div className={styles.settingGroup}>
                         <h3>Redimensionar Lote</h3>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                        <label className={styles.checkboxLabel}>
                           <input
                             type="checkbox"
                             checked={resizeEnabled}
                             onChange={(e) => setResizeEnabled(e.target.checked)}
-                            style={{ accentColor: 'var(--primary)' }}
+                            className={styles.settingCheckbox}
                           />
                           Redimensionar al exportar
                         </label>
                         {resizeEnabled && (
-                          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Ancho:</span>
+                          <div className={styles.resizeRow}>
+                            <div className={styles.resizeField}>
+                              <span className={styles.resizeLabel}>Ancho:</span>
                               <input
                                 type="number"
                                 value={resizeWidth}
                                 onChange={(e) => setResizeWidth(Math.max(1, Number(e.target.value)))}
                                 min={1}
                                 max={10000}
-                                style={{
-                                  width: 90, padding: '6px 8px', borderRadius: 6,
-                                  background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-                                  color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.85rem',
-                                }}
+                                className={styles.resizeInput}
                               />
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>px</span>
+                              <span className={styles.resizeUnit}>px</span>
                             </div>
-                            <span style={{ color: 'var(--text-dim)' }}>×</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Alto:</span>
+                            <span className={styles.resizeSep}>×</span>
+                            <div className={styles.resizeField}>
+                              <span className={styles.resizeLabel}>Alto:</span>
                               <input
                                 type="number"
                                 value={resizeHeight}
                                 onChange={(e) => setResizeHeight(Math.max(1, Number(e.target.value)))}
                                 min={1}
                                 max={10000}
-                                style={{
-                                  width: 90, padding: '6px 8px', borderRadius: 6,
-                                  background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-                                  color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.85rem',
-                                }}
+                                className={styles.resizeInput}
                               />
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>px</span>
+                              <span className={styles.resizeUnit}>px</span>
                             </div>
                           </div>
                         )}
-                        <p className={styles.settingHint} style={{ marginTop: 8 }}>
+                        <p className={styles.settingHint}>
                           {resizeEnabled
                             ? `Se redimensionará a ${resizeWidth}×${resizeHeight} px al exportar.`
                             : 'Las imágenes conservan su resolución original.'}
@@ -1430,16 +1335,12 @@ export default function Home() {
 
                       <div className={styles.settingGroup}>
                         <h3>Plantillas de Exportación</h3>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                        <div className={styles.presetsRow}>
                           {presets.length === 0 && (
-                            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Sin plantillas guardadas.</p>
+                            <p className={styles.presetsEmpty}>Sin plantillas guardadas.</p>
                           )}
                           {presets.map((p, i) => (
-                            <div key={i} style={{
-                              display: 'flex', alignItems: 'center', gap: 6,
-                              padding: '6px 10px', borderRadius: 6,
-                              background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-                            }}>
+                            <div key={i} className={styles.presetBadge}>
                               <button
                                 onClick={() => {
                                   setExportFormat(p.format as any);
@@ -1448,12 +1349,7 @@ export default function Home() {
                                   setShouldUpscale(p.upscale);
                                   toast.addToast('success', `Plantilla "${p.name}" aplicada`);
                                 }}
-                                style={{
-                                  background: 'transparent', border: 'none',
-                                  color: 'var(--text-main)', cursor: 'pointer',
-                                  fontFamily: 'inherit', fontSize: '0.8rem',
-                                  padding: '2px 4px',
-                                }}
+                                className={styles.presetBtn}
                               >
                                 {p.name}
                               </button>
@@ -1462,11 +1358,7 @@ export default function Home() {
                                   setPresets(presets.filter((_, j) => j !== i));
                                   toast.addToast('info', `Plantilla "${p.name}" eliminada`);
                                 }}
-                                style={{
-                                  background: 'transparent', border: 'none',
-                                  color: 'var(--text-dim)', cursor: 'pointer',
-                                  padding: 2, display: 'flex',
-                                }}
+                                className={styles.presetDeleteBtn}
                                 aria-label={`Eliminar plantilla ${p.name}`}
                               >
                                 <X size={12} />
@@ -1475,7 +1367,7 @@ export default function Home() {
                           ))}
                         </div>
                         {showPresetInput ? (
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <div className={styles.presetInputRow}>
                             <input
                               type="text"
                               value={presetName}
@@ -1490,19 +1382,11 @@ export default function Home() {
                                 }
                               }}
                               autoFocus
-                              style={{
-                                flex: 1, padding: '8px 12px', borderRadius: 6,
-                                background: 'var(--bg-card)', border: '1px solid var(--border-active)',
-                                color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.9rem',
-                              }}
+                              className={styles.presetInput}
                             />
                             <button
                               onClick={() => setShowPresetInput(false)}
-                              style={{
-                                background: 'transparent', border: '1px solid var(--border-subtle)',
-                                color: 'var(--text-muted)', padding: '8px 12px', borderRadius: 6,
-                                cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem',
-                              }}
+                              className={styles.presetCancelBtn}
                             >
                               Cancelar
                             </button>
@@ -1510,8 +1394,7 @@ export default function Home() {
                         ) : (
                           <button
                             onClick={() => setShowPresetInput(true)}
-                            className="btn-primary"
-                            style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                            className={`btn-primary ${styles.presetSaveBtn}`}
                           >
                             Guardar configuración actual como plantilla
                           </button>
@@ -1560,7 +1443,7 @@ export default function Home() {
         {showConfirm && (
           <ConfirmModal
             message="¿Estás seguro de querer borrar todo el historial? Esta acción no se puede deshacer."
-            onConfirm={() => { clearHistory(); setShowConfirm(false); toast.addToast('info', 'Historial borrado'); }}
+            onConfirm={handleClearHistory}
             onCancel={() => setShowConfirm(false)}
           />
         )}
@@ -1624,9 +1507,9 @@ export default function Home() {
         <button
           className={`${styles.focusToggle} ${focusMode ? styles.focusToggleActive : ''}`}
           onClick={() => setFocusMode(!focusMode)}
-          title={focusMode ? 'Salir de modo foco' : 'Modo foco (Sin distracciones)'}
+          aria-label={focusMode ? 'Salir de modo foco' : 'Modo foco (Sin distracciones)'}
         >
-          <Focus size={18} />
+          <Focus size={18} aria-hidden="true" />
         </button>
       )}
 
@@ -1646,5 +1529,13 @@ export default function Home() {
         onClose={() => setTimelineOpen(false)}
       />
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <HomeInner />
+    </Suspense>
   );
 }

@@ -39,7 +39,7 @@ export default function ProcessingTimeline({ results, isOpen, onClose }: Process
           exit={{ opacity: 0 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 3000,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'var(--overlay)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             backdropFilter: 'blur(4px)',
           }}

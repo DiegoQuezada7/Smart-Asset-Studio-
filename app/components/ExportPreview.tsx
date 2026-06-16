@@ -74,7 +74,7 @@ export default function ExportPreview({ isOpen, onClose, items, format, quality,
           transition={{ duration: 0.12 }}
           style={{
             position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'var(--overlay)',
             backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
@@ -99,7 +99,7 @@ export default function ExportPreview({ isOpen, onClose, items, format, quality,
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              boxShadow: 'var(--shadow-lg)',
             }}
           >
             <div style={{

@@ -16,8 +16,12 @@ function createWindow () {
     title: "Smart Asset Studio",
     backgroundColor: "#0a0a0a",
     autoHideMenuBar: true,
-    // icon: path.join(__dirname, '../public/favicon.ico') 
+    show: false,
+    icon: path.join(__dirname, '../public/icon.png')
   });
+
+  mainWindow.maximize();
+  mainWindow.show();
 
   const isDev = !app.isPackaged;
 

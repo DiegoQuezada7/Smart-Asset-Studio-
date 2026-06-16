@@ -3,6 +3,7 @@ import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ToastProvider } from "./contexts/ToastContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -20,6 +21,10 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Smart Asset Studio",
   description: "Automated asset processing for professionals.",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -36,11 +41,13 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${fraunces.variable} ${dmSans.variable}`}>
       <body>
-        <ErrorBoundary>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
-        </ErrorBoundary>
+        <ThemeProvider>
+          <ErrorBoundary>
+            <ToastProvider>
+              {children}
+            </ToastProvider>
+          </ErrorBoundary>
+        </ThemeProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { X, Check, Eraser, PenTool, ZoomIn, ZoomOut, Hand, RotateCcw, RotateCw, Stamp, Droplet } from 'lucide-react';
 import styles from './MaskEditor.module.css';
 
@@ -33,6 +33,7 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
   const [imgOriginal, setImgOriginal] = useState<HTMLImageElement | null>(null);
   const [imgProcessed, setImgProcessed] = useState<HTMLImageElement | null>(null);
   const [imgInitial, setImgInitial] = useState<HTMLImageElement | null>(null);
+  const [nativeSize, setNativeSize] = useState({ width: 0, height: 0 });
   
   const [canvasSnapshot, setCanvasSnapshot] = useState<HTMLCanvasElement | null>(null);
 
@@ -111,7 +112,6 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
         setImgOriginal(img1);
         setImgProcessed(img2);
         if (initialProcessedUrl) setImgInitial(img3);
-        initCanvas(img1, img2);
       }
     };
 
@@ -119,7 +119,18 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
     img2.onload = onLoad;
     if (initialProcessedUrl) img3.onload = onLoad;
     
-  }, [originalUrl, processedUrl, initialProcessedUrl]); 
+  }, [originalUrl, processedUrl, initialProcessedUrl]);
+
+  // Initialize canvas when images are ready (runs after React commits state)
+  useEffect(() => {
+    if (!imgOriginal || !imgProcessed) return;
+    const targetImg = imgInitial || imgProcessed;
+    if (!targetImg) return;
+
+    redrawCanvas(targetImg);
+    fitViewport(imgOriginal.width, imgOriginal.height);
+    setTimeout(() => saveHistory(), 100);
+  }, [imgOriginal, imgProcessed]); 
 
   // Keyboard Shortcuts Effect
   useEffect(() => {
@@ -177,27 +188,7 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
         window.removeEventListener('keyup', handleKeyUp);
     };
   }, [history, historyStep, prevTool]); // Separated dependencies
- 
-
-  const initCanvas = (original: HTMLImageElement, processed: HTMLImageElement) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    canvas.width = original.width;
-    canvas.height = original.height;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    ctx.clearRect(0,0, canvas.width, canvas.height);
-    ctx.drawImage(processed, 0, 0);
-
-    // Initial History Save
-    setTimeout(() => {
-        saveHistory(); 
-    }, 100);
-  };
-
+  
   const getPointerPos = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -377,18 +368,43 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
     }
   };
 
+  const redrawCanvas = useCallback((img: HTMLImageElement) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+    }
+    setNativeSize({ width: img.width, height: img.height });
+  }, []);
+
+  const fitViewport = useCallback((imgW: number, imgH: number) => {
+    const avW = window.innerWidth * 0.85;
+    const avH = (window.innerHeight - 60) * 0.85;
+    const computedScale = avW > 0 && avH > 0
+      ? Math.min(avW / imgW, avH / imgH, 1)
+      : 1;
+    setScale(computedScale);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
   const handleSave = () => {
     canvasRef.current?.toBlob((blob) => {
       if (blob) onSave(blob);
     }, 'image/png');
   };
   
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
       const targetImg = imgInitial || imgProcessed;
       if (imgOriginal && targetImg) {
-          initCanvas(imgOriginal, targetImg);
+          redrawCanvas(targetImg);
+          fitViewport(imgOriginal.width, imgOriginal.height);
+          setTimeout(() => saveHistory(), 100);
       }
-  };
+  }, [imgOriginal, imgProcessed, imgInitial, redrawCanvas, fitViewport]);
 
   const handleWheel = (e: React.WheelEvent) => {
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -452,20 +468,26 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
          </div>
       </div>
 
-      <div className={styles.canvasContainer} onWheel={handleWheel} style={{overflow:'hidden', cursor: tool === 'pan' ? 'grab' : (tool === 'clone' || tool === 'blur') ? 'crosshair' : 'crosshair'}}>
-          <canvas 
-            ref={canvasRef}
-            className={styles.canvas}
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            
-            style={{ 
-               transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`, 
-               transformOrigin: 'center',
-            }}
-          />
+      <div className={styles.canvasContainer} onWheel={handleWheel} style={{cursor: tool === 'pan' ? 'grab' : 'crosshair'}}>
+          <div style={{
+            width: nativeSize.width > 0 ? `${nativeSize.width * scale}px` : '0px',
+            height: nativeSize.height > 0 ? `${nativeSize.height * scale}px` : '0px',
+            transform: `translate(${pan.x}px, ${pan.y}px)`,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <canvas 
+              ref={canvasRef}
+              className={styles.canvas}
+              onMouseDown={handleMouseDown}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              style={{ width: '100%', height: '100%' }}
+            />
+          </div>
           
           <div className={styles.zoomControls}>
               <button onClick={() => setScale(s => Math.max(0.1, s - 0.2))} style={{background: 'transparent', border:'none', color:'var(--text-main)'}}><ZoomOut size={20}/></button>
@@ -482,21 +504,21 @@ export default function MaskEditor({ originalUrl, processedUrl, initialProcessed
                    border: '2px solid var(--border-active)',
                    overflow: 'hidden', opacity: 0.6,
                    pointerEvents: 'none',
-                   boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    boxShadow: 'var(--shadow-md)',
                }}>
                    <img src={originalUrl} alt="" style={{width:'100%', height:'100%', objectFit:'contain'}} />
-                   <div style={{
-                       position:'absolute', bottom: 0, left: 0, right: 0,
-                       background: 'rgba(0,0,0,0.7)',
-                       fontSize: 8, color: 'var(--text-dim)',
-                       textAlign: 'center', padding: '2px',
-                   }}>
+                    <div style={{
+                        position:'absolute', bottom: 0, left: 0, right: 0,
+                        background: 'var(--overlay-strong)',
+                        fontSize: 8, color: 'var(--primary-text)',
+                        textAlign: 'center', padding: '2px',
+                    }}>
                        Original
                    </div>
                </div>
            )}
 
-           <div style={{position:'absolute', bottom: 20, left: '50%', transform:'translateX(-50%)', color:'var(--text-dim)', fontSize:12, pointerEvents:'none', textAlign:'center'}}>
+           <div style={{position:'absolute', bottom: 20, left: '50%', transform:'translateX(-50%)', color:'var(--primary-text)', fontSize:12, pointerEvents:'none', textAlign:'center', opacity:0.6}}>
              Espacio + Arrastrar para mover | Tampón: Ctrl+Clic | [ ] Tamaño pincel
           </div>
       </div>

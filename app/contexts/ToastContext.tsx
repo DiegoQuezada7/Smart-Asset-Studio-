@@ -5,6 +5,11 @@ import { CheckCircle, XCircle, Info, AlertTriangle, Loader2, X } from 'lucide-re
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'progress';
 
+export interface ToastAction {
+  label: string;
+  action: () => void;
+}
+
 export interface Toast {
   id: string;
   type: ToastType;
@@ -12,11 +17,13 @@ export interface Toast {
   exiting?: boolean;
   progress?: number;
   duration?: number;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
   toasts: Toast[];
   addToast: (type: ToastType, message: string, duration?: number) => string;
+  addToastWithAction: (type: ToastType, message: string, action: ToastAction, duration?: number) => string;
   addProgressToast: (message: string) => string;
   updateProgressToast: (id: string, message: string, progress: number) => void;
   removeToast: (id: string) => void;
@@ -56,6 +63,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return id;
   }, [removeToast]);
 
+  const addToastWithAction = useCallback((type: ToastType, message: string, action: ToastAction, duration = 6000): string => {
+    const id = crypto.randomUUID();
+    setToasts(prev => [...prev, { id, type, message, action }]);
+    const timer = setTimeout(() => removeToast(id), duration);
+    timersRef.current.set(id, timer);
+    return id;
+  }, [removeToast]);
+
   const addProgressToast = useCallback((message: string): string => {
     const id = crypto.randomUUID();
     setToasts(prev => [...prev, { id, type: 'progress', message, progress: 0 }]);
@@ -69,7 +84,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <ToastContext.Provider value={{ toasts, addToast, addProgressToast, updateProgressToast, removeToast }}>
+    <ToastContext.Provider value={{ toasts, addToast, addToastWithAction, addProgressToast, updateProgressToast, removeToast }}>
       {children}
       <div className="toast-container">
         {toasts.map(toast => (
@@ -84,6 +99,27 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <span style={{ fontSize: '0.75rem', opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>
                 {Math.round(toast.progress)}%
               </span>
+            )}
+            {toast.action && (
+              <button
+                onClick={() => { toast.action!.action(); removeToast(toast.id); }}
+                style={{
+                  background: 'var(--primary-dim)',
+                  border: '1px solid var(--primary)',
+                  color: 'var(--primary)',
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-sm, 6px)',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  flexShrink: 0,
+                  touchAction: 'manipulation',
+                  minHeight: 32,
+                }}
+              >
+                {toast.action.label}
+              </button>
             )}
             <button className="toast-close" onClick={() => removeToast(toast.id)} aria-label="Cerrar">
               <X size={14} />
